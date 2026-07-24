@@ -16,10 +16,13 @@ data class Symbol(
 data class SourceFile(
     val path: String,
     val language: String,
-    val packageName: String?
+    val packageName: String?,
+    val lastModified: Long = 0L,
+    val sha256: String = ""
 )
 
 data class ParseResult(
     val sourceFile: SourceFile,
-    val symbols: List<Symbol>
+    val symbols: List<Symbol>,
+    val edges: List<Edge>
 )

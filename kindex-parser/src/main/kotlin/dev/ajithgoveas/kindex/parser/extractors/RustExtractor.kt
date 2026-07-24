@@ -10,31 +10,22 @@ import dev.ajithgoveas.kindex.parser.LanguageExtractor
 import dev.ajithgoveas.kindex.parser.HashUtils
 import org.treesitter.TSParser
 import org.treesitter.TSNode
-import org.treesitter.TreeSitterJava
-import org.treesitter.TreeSitterKotlin
+import org.treesitter.TreeSitterRust
 import java.io.File
 
-class KotlinJavaExtractor : LanguageExtractor {
+class RustExtractor : LanguageExtractor {
 
     override fun supports(file: File): Boolean {
-        return file.extension in listOf("kt", "java")
+        return file.extension == "rs"
     }
 
     override fun extract(file: File): ParseResult {
-        val language = if (file.extension == "kt") "Kotlin" else "Java"
-        val tsLanguage = if (file.extension == "kt") {
-            TreeSitterKotlin()
-        } else {
-            TreeSitterJava()
-        }
-
         val parser = TSParser()
-        parser.setLanguage(tsLanguage)
+        parser.setLanguage(TreeSitterRust())
         val sourceCode = file.readText()
         val tree = parser.parseString(null, sourceCode)
         val rootNode = tree.rootNode
 
-        var packageName: String? = null
         val symbols = mutableListOf<Symbol>()
         val edges = mutableListOf<Edge>()
 
@@ -43,13 +34,9 @@ class KotlinJavaExtractor : LanguageExtractor {
             val child = rootNode.getChild(i) ?: continue
 
             when (child.type) {
-                "package_header", "package_declaration" -> {
+                "use_declaration" -> {
                     val childText = sourceCode.substring(child.startByte, child.endByte)
-                    packageName = childText.replace("package", "").trim(' ', ';', '\n', '\r')
-                }
-                "import_header", "import_declaration" -> {
-                    val childText = sourceCode.substring(child.startByte, child.endByte)
-                    val importedFqn = childText.replace("import", "").trim(' ', ';', '\n', '\r')
+                    val importedFqn = childText.replace("use", "").trim(' ', ';', '\n', '\r')
                     edges.add(
                         Edge(
                             sourceId = file.path,
@@ -58,7 +45,7 @@ class KotlinJavaExtractor : LanguageExtractor {
                         )
                     )
                 }
-                "class_declaration", "interface_declaration" -> {
+                "struct_item", "union_item" -> {
                     var nameNode: TSNode? = null
                     for (j in 0 until child.childCount) {
                         val c = child.getChild(j) ?: continue
@@ -68,65 +55,88 @@ class KotlinJavaExtractor : LanguageExtractor {
                         }
                     }
                     val name = if (nameNode != null) {
-                        sourceCode.substring(nameNode.startByte, nameNode.endByte)
+                        sourceCode.substring(nameNode.startByte, nameNode.endByte).trim()
                     } else {
-                        "Unknown"
+                        "UnknownStruct"
                     }
-                    val type = if (child.type.contains("interface")) SymbolType.INTERFACE else SymbolType.CLASS
-                    val fqn = if (packageName != null) "$packageName.$name" else name
-
                     symbols.add(
                         Symbol(
-                            id = fqn,
+                            id = name,
                             name = name,
-                            type = type,
+                            type = SymbolType.CLASS,
                             filePath = file.path,
-                            packageName = packageName,
+                            packageName = "crate",
                             lineNumber = child.startPoint.row + 1
                         )
                     )
-
-                    // Link file to symbol
                     edges.add(
                         Edge(
                             sourceId = file.path,
-                            targetId = fqn,
+                            targetId = name,
                             relation = RelationType.CONTAINS
                         )
                     )
                 }
-                "function_declaration", "method_declaration" -> {
+                "trait_item" -> {
                     var nameNode: TSNode? = null
                     for (j in 0 until child.childCount) {
                         val c = child.getChild(j) ?: continue
-                        if (c.type == "simple_identifier" || c.type == "identifier") {
+                        if (c.type == "type_identifier" || c.type == "identifier") {
                             nameNode = c
                             break
                         }
                     }
                     val name = if (nameNode != null) {
-                        sourceCode.substring(nameNode.startByte, nameNode.endByte)
+                        sourceCode.substring(nameNode.startByte, nameNode.endByte).trim()
                     } else {
-                        "anonymous"
+                        "UnknownTrait"
                     }
-                    val fqn = if (packageName != null) "$packageName#$name" else name
-
                     symbols.add(
                         Symbol(
-                            id = fqn,
+                            id = name,
                             name = name,
-                            type = SymbolType.FUNCTION,
+                            type = SymbolType.INTERFACE,
                             filePath = file.path,
-                            packageName = packageName,
+                            packageName = "crate",
                             lineNumber = child.startPoint.row + 1
                         )
                     )
-
-                    // Link file to function/method
                     edges.add(
                         Edge(
                             sourceId = file.path,
-                            targetId = fqn,
+                            targetId = name,
+                            relation = RelationType.CONTAINS
+                        )
+                    )
+                }
+                "function_item" -> {
+                    var nameNode: TSNode? = null
+                    for (j in 0 until child.childCount) {
+                        val c = child.getChild(j) ?: continue
+                        if (c.type == "identifier") {
+                            nameNode = c
+                            break
+                        }
+                    }
+                    val name = if (nameNode != null) {
+                        sourceCode.substring(nameNode.startByte, nameNode.endByte).trim()
+                    } else {
+                        "anonymous_fn"
+                    }
+                    symbols.add(
+                        Symbol(
+                            id = name,
+                            name = name,
+                            type = SymbolType.FUNCTION,
+                            filePath = file.path,
+                            packageName = "crate",
+                            lineNumber = child.startPoint.row + 1
+                        )
+                    )
+                    edges.add(
+                        Edge(
+                            sourceId = file.path,
+                            targetId = name,
                             relation = RelationType.CONTAINS
                         )
                     )
@@ -137,8 +147,8 @@ class KotlinJavaExtractor : LanguageExtractor {
         return ParseResult(
             sourceFile = SourceFile(
                 path = file.path,
-                language = language,
-                packageName = packageName,
+                language = "Rust",
+                packageName = "crate",
                 lastModified = file.lastModified(),
                 sha256 = HashUtils.sha256(file)
             ),
