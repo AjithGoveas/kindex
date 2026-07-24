@@ -1,0 +1,93 @@
+# ==========================================
+# KIndex Internal Runtime Artifacts
+# ==========================================
+# Exclude local SQLite index generated when scanning projects during dev
+.kindex/
+*.db
+*.db-journal
+*.db-wal
+
+# ==========================================
+# Gradle & Build Artifacts
+# ==========================================
+.gradle/
+build/
+**/build/
+out/
+**/out/
+bin/
+**/bin/
+
+# Cache directories
+.gradletasknamecache
+
+# ==========================================
+# Kotlin & JVM Tooling
+# ==========================================
+.kotlin/
+kotlin-daemon.log*
+.konan/
+
+# ==========================================
+# IntelliJ IDEA
+# ==========================================
+# Ignore the entire .idea folder except workspace settings if needed
+.idea/
+*.iws
+*.iml
+*.ipr
+*.class
+
+# Native/JNI Libraries (Tree-sitter native binaries generated locally)
+*.so
+*.dylib
+*.dll
+
+# ==========================================
+# Other IDEs & Editors
+# ==========================================
+# VS Code
+.vscode/
+*.code-workspace
+
+# Eclipse
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings/
+.springBeans
+.sts4-cache
+
+# NetBeans
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+# ==========================================
+# OS Generated Files
+# ==========================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+Files.xml
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+.directory
+
+# ==========================================
+# Logs & Environment
+# ==========================================
+*.log
+*.tmp
+.env
