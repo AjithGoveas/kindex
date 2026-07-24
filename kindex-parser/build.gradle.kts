@@ -6,6 +6,6 @@ dependencies {
     implementation(project(":kindex-core"))
 
     implementation(libs.tree.sitter)
-    implementation(libs.tree-sitter-java)
-    implementation(libs.tree-sitter-kotlin)
+    implementation(libs.tree.sitter.java)
+    implementation(libs.tree.sitter.kotlin)
 }
