@@ -1,7 +1,7 @@
 package dev.ajithgoveas.kindex.cli
 
 import com.github.ajalt.clikt.core.CliktCommand
-import com.github.ajalt.clikt.core.main
+import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.types.file
 import com.github.ajalt.mordant.terminal.Terminal

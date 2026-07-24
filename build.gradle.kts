@@ -1,6 +1,6 @@
 plugins {
-    kotlin("jvm") version "2.3.21"
-    kotlin("plugin.serialization") version "2.0.0" apply false
+    alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.kotlin.serialization) apply false
 }
 
 group = "dev.ajithgoveas"
@@ -14,14 +14,6 @@ allprojects {
     }
 }
 
-dependencies {
-    testImplementation(kotlin("test"))
-}
-
 kotlin {
     jvmToolchain(21)
-}
-
-tasks.test {
-    useJUnitPlatform()
 }
