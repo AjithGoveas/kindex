@@ -20,6 +20,7 @@ import dev.ajithgoveas.kindex.cli.commands.DepsCommand
 import dev.ajithgoveas.kindex.cli.commands.StatsCommand
 import dev.ajithgoveas.kindex.cli.commands.ExportCommand
 import dev.ajithgoveas.kindex.cli.commands.DeadCommand
+import dev.ajithgoveas.kindex.cli.commands.InteractiveCommand
 import java.io.File
 
 class KIndex : CliktCommand(name = "kindex", help = "Code Knowledge Indexer") {
@@ -187,12 +188,27 @@ class QueryCommand : CliktCommand(name = "query", help = "Search indexed symbols
 }
 
 fun main(args: Array<String>) {
+    val subcommandsList = listOf("scan", "query", "deps", "stats", "export", "dead", "interactive")
+    val mappedArgs = if (args.isNotEmpty()) {
+        val firstArgLower = args[0].lowercase()
+        if (firstArgLower in subcommandsList) {
+            val newArgs = args.clone()
+            newArgs[0] = firstArgLower
+            newArgs
+        } else {
+            args
+        }
+    } else {
+        args
+    }
+
     KIndex().subcommands(
         ScanCommand(),
         QueryCommand(),
         DepsCommand(),
         StatsCommand(),
         ExportCommand(),
-        DeadCommand()
-    ).main(args)
+        DeadCommand(),
+        InteractiveCommand()
+    ).main(mappedArgs)
 }

@@ -17,6 +17,10 @@ graalvmNative {
     }
 }
 
+tasks.withType<JavaExec> {
+    standardInput = System.`in`
+}
+
 dependencies {
     implementation(project(":kindex-core"))
     implementation(project(":kindex-parser"))
@@ -24,5 +28,7 @@ dependencies {
 
     implementation(libs.clikt)
     implementation(libs.mordant)
+    implementation(libs.jline)
+    implementation(libs.jansi)
     implementation(libs.kotlinx.coroutines.core)
 }

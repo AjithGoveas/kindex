@@ -13,6 +13,8 @@ bonede-rust = "0.21.2"
 bonede-typescript = "0.21.1"
 bonede-go = "0.21.0"
 graalvm = "0.9.28"
+jline = "3.26.1"
+jansi = "2.4.1"
 
 [libraries]
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
@@ -29,6 +31,8 @@ tree-sitter-kotlin = { group = "io.github.bonede", name = "tree-sitter-kotlin", 
 tree-sitter-rust = { group = "io.github.bonede", name = "tree-sitter-rust", version.ref = "bonede-rust" }
 tree-sitter-typescript = { group = "io.github.bonede", name = "tree-sitter-typescript", version.ref = "bonede-typescript" }
 tree-sitter-go = { group = "io.github.bonede", name = "tree-sitter-go", version.ref = "bonede-go" }
+jline = { group = "org.jline", name = "jline", version.ref = "jline" }
+jansi = { group = "org.fusesource.jansi", name = "jansi", version.ref = "jansi" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
