@@ -4,20 +4,24 @@ kotlinx-coroutines = "1.8.1"
 kotlinx-serialization = "1.6.3"
 clikt = "4.3.0"
 mordant = "2.6.0"
-jtreesitter = "0.26.1"
 exposed = "0.50.1"
 sqlite-jdbc = "3.45.3.0"
+bonede-core = "0.23.0"
+bonede-java = "0.23.5"
+bonede-kotlin = "0.3.8.1"
 
 [libraries]
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 clikt = { group = "com.github.ajalt.clikt", name = "clikt", version.ref = "clikt" }
 mordant = { group = "com.github.ajalt.mordant", name = "mordant", version.ref = "mordant" }
-jtreesitter = { group = "io.github.tree-sitter", name = "jtreesitter", version.ref = "jtreesitter" }
 exposed-core = { group = "org.jetbrains.exposed", name = "exposed-core", version.ref = "exposed" }
 exposed-dao = { group = "org.jetbrains.exposed", name = "exposed-dao", version.ref = "exposed" }
 exposed-jdbc = { group = "org.jetbrains.exposed", name = "exposed-jdbc", version.ref = "exposed" }
 sqlite-jdbc = { group = "org.xerial", name = "sqlite-jdbc", version.ref = "sqlite-jdbc" }
+tree-sitter = { group = "io.github.bonede", name = "tree-sitter", version.ref = "bonede-core" }
+tree-sitter-java = { group = "io.github.bonede", name = "tree-sitter-java", version.ref = "bonede-java" }
+tree-sitter-kotlin = { group = "io.github.bonede", name = "tree-sitter-kotlin", version.ref = "bonede-kotlin" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
