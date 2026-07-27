@@ -11,8 +11,7 @@ import com.github.ajalt.mordant.rendering.TextStyles.bold
 import com.github.ajalt.mordant.table.table
 import com.github.ajalt.mordant.terminal.Terminal
 import dev.ajithgoveas.kindex.core.model.ParseResult
-import dev.ajithgoveas.kindex.parser.extractors.KotlinJavaExtractor
-import dev.ajithgoveas.kindex.parser.extractors.RustExtractor
+import dev.ajithgoveas.kindex.parser.extractors.*
 import dev.ajithgoveas.kindex.parser.HashUtils
 import dev.ajithgoveas.kindex.storage.IndexStorage
 import dev.ajithgoveas.kindex.parser.SymbolResolver
@@ -38,7 +37,16 @@ class ScanCommand : CliktCommand(name = "scan", help = "Scan a repository direct
         val t = Terminal()
         t.println(cyan("Scanning repository at: ") + bold(directory.absolutePath))
 
-        val extractors = listOf(KotlinJavaExtractor(), RustExtractor())
+        val extractors = listOf(
+            KotlinJavaExtractor(),
+            RustExtractor(),
+            CExtractor(),
+            CppExtractor(),
+            CSharpExtractor(),
+            JavaScriptExtractor(),
+            GoExtractor(),
+            CssExtractor()
+        )
         val walkedFiles = directory.walkTopDown()
             .filter { file -> file.isFile && extractors.any { it.supports(file) } }
             .filter { !it.path.contains("/build/") && !it.path.contains("/.gradle/") && !it.path.contains("/.kindex/") }

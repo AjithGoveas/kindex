@@ -5,42 +5,33 @@ import dev.ajithgoveas.kindex.parser.HashUtils
 import org.treesitter.*
 import java.io.File
 
-class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
+class CSharpExtractor : BaseExtractor("C#", listOf("cs")) {
 
     override fun extract(file: File): ParseResult {
-        val isKotlin = file.extension == "kt"
-        val tsLanguage = if (isKotlin) TreeSitterKotlin() else TreeSitterJava()
+        val tsLanguage = TreeSitterCSharp()
 
-        val queryStr = if (isKotlin) {
-            """
-            (package_header (identifier) @package)
-            (import_header (identifier) @import)
-            (class_declaration (simple_identifier) @class_name) @class_node
-            (interface_declaration (simple_identifier) @interface_name) @interface_node
-            (function_declaration (simple_identifier) @function_name) @function_node
-            """.trimIndent()
-        } else {
-            """
-            (package_declaration (scoped_identifier) @package)
-            (import_declaration (scoped_identifier) @import)
+        val queryStr = """
+            (using_directive [ (qualified_name) (identifier) ] @import)
+            (namespace_declaration name: [ (qualified_name) (identifier) ] @package)
+            (file_scoped_namespace_declaration name: [ (qualified_name) (identifier) ] @package)
             (class_declaration name: (identifier) @class_name) @class_node
             (interface_declaration name: (identifier) @interface_name) @interface_node
+            (struct_declaration name: (identifier) @class_name) @class_node
             (method_declaration name: (identifier) @function_name) @function_node
-            """.trimIndent()
-        }
+        """.trimIndent()
 
         val sourceCode = file.readText()
         val symbols = mutableListOf<Symbol>()
         val edges = mutableListOf<Edge>()
         val classLineRanges = mutableListOf<ClassLineRange>()
 
-        var packageName: String? = null
+        var currentNamespace: String? = null
 
         val groups = runQuery(tsLanguage, sourceCode, queryStr)
 
         for (group in groups) {
-            val matchedPackage = group.text["package"]
             val matchedImport = group.text["import"]
+            val matchedNamespace = group.text["package"]
             val className = group.text["class_name"]
             val classNode = group.captures["class_node"]
             val interfaceName = group.text["interface_name"]
@@ -48,61 +39,38 @@ class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
             val functionName = group.text["function_name"]
             val functionNode = group.captures["function_node"]
 
-            if (matchedPackage != null) {
-                packageName = matchedPackage
+            if (matchedNamespace != null) {
+                currentNamespace = matchedNamespace
             }
 
             if (matchedImport != null) {
-                edges.add(
-                    Edge(
-                        sourceId = file.path,
-                        targetId = matchedImport,
-                        relation = RelationType.IMPORTS
-                    )
-                )
+                edges.add(Edge(file.path, matchedImport, RelationType.IMPORTS))
             }
 
             if (className != null && classNode != null) {
-                val fqn = if (packageName != null) "$packageName.$className" else className
+                val fqn = if (currentNamespace != null) "$currentNamespace.$className" else className
                 symbols.add(
                     Symbol(
                         id = fqn,
                         name = className,
                         type = SymbolType.CLASS,
                         filePath = file.path,
-                        packageName = packageName,
+                        packageName = currentNamespace ?: "csharp",
                         lineNumber = classNode.startPoint.row + 1
                     )
                 )
                 edges.add(Edge(file.path, fqn, RelationType.CONTAINS))
                 classLineRanges.add(ClassLineRange(fqn, classNode.startPoint.row + 1, classNode.endPoint.row + 1))
 
-                // Class inheritance extraction from header
+                // C# inheritance extraction
                 val braceIdx = sourceCode.indexOf('{', classNode.startByte)
                 val headerText = if (braceIdx != -1 && braceIdx > classNode.startByte) {
                     sourceCode.substring(classNode.startByte, braceIdx)
                 } else {
                     sourceCode.substring(classNode.startByte, classNode.endByte)
                 }
-
-                if (headerText.contains("extends")) {
-                    val extended = headerText.substringAfter("extends").trim().substringBefore("implements").substringBefore("{").trim().split(",").map { it.trim() }
-                    for (ext in extended) {
-                        if (ext.isNotEmpty()) {
-                            edges.add(Edge(fqn, ext, RelationType.EXTENDS))
-                        }
-                    }
-                }
-                if (headerText.contains("implements")) {
-                    val implemented = headerText.substringAfter("implements").trim().substringBefore("{").trim().split(",").map { it.trim() }
-                    for (impl in implemented) {
-                        if (impl.isNotEmpty()) {
-                            edges.add(Edge(fqn, impl, RelationType.EXTENDS))
-                        }
-                    }
-                }
-                if (isKotlin && headerText.contains(":")) {
-                    val supertypes = headerText.substringAfter(":").trim().substringBefore("{").trim().split(",").map { it.trim().substringBefore("(").substringBefore("<").trim() }
+                if (headerText.contains(":")) {
+                    val supertypes = headerText.substringAfter(":").trim().substringBefore("{").trim().split(",").map { it.trim() }
                     for (supertype in supertypes) {
                         if (supertype.isNotEmpty()) {
                             edges.add(Edge(fqn, supertype, RelationType.EXTENDS))
@@ -112,37 +80,29 @@ class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
             }
 
             if (interfaceName != null && interfaceNode != null) {
-                val fqn = if (packageName != null) "$packageName.$interfaceName" else interfaceName
+                val fqn = if (currentNamespace != null) "$currentNamespace.$interfaceName" else interfaceName
                 symbols.add(
                     Symbol(
                         id = fqn,
                         name = interfaceName,
                         type = SymbolType.INTERFACE,
                         filePath = file.path,
-                        packageName = packageName,
+                        packageName = currentNamespace ?: "csharp",
                         lineNumber = interfaceNode.startPoint.row + 1
                     )
                 )
                 edges.add(Edge(file.path, fqn, RelationType.CONTAINS))
                 classLineRanges.add(ClassLineRange(fqn, interfaceNode.startPoint.row + 1, interfaceNode.endPoint.row + 1))
 
-                // Interface inheritance from header
+                // Interface inheritance
                 val braceIdx = sourceCode.indexOf('{', interfaceNode.startByte)
                 val headerText = if (braceIdx != -1 && braceIdx > interfaceNode.startByte) {
                     sourceCode.substring(interfaceNode.startByte, braceIdx)
                 } else {
                     sourceCode.substring(interfaceNode.startByte, interfaceNode.endByte)
                 }
-                if (headerText.contains("extends")) {
-                    val extended = headerText.substringAfter("extends").trim().substringBefore("{").trim().split(",").map { it.trim() }
-                    for (ext in extended) {
-                        if (ext.isNotEmpty()) {
-                            edges.add(Edge(fqn, ext, RelationType.EXTENDS))
-                        }
-                    }
-                }
-                if (isKotlin && headerText.contains(":")) {
-                    val supertypes = headerText.substringAfter(":").trim().substringBefore("{").trim().split(",").map { it.trim().substringBefore("(").substringBefore("<").trim() }
+                if (headerText.contains(":")) {
+                    val supertypes = headerText.substringAfter(":").trim().substringBefore("{").trim().split(",").map { it.trim() }
                     for (supertype in supertypes) {
                         if (supertype.isNotEmpty()) {
                             edges.add(Edge(fqn, supertype, RelationType.EXTENDS))
@@ -152,14 +112,14 @@ class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
             }
 
             if (functionName != null && functionNode != null) {
-                val fqn = if (packageName != null) "$packageName#$functionName" else functionName
+                val fqn = if (currentNamespace != null) "$currentNamespace#$functionName" else functionName
                 symbols.add(
                     Symbol(
                         id = fqn,
                         name = functionName,
                         type = SymbolType.FUNCTION,
                         filePath = file.path,
-                        packageName = packageName,
+                        packageName = currentNamespace ?: "csharp",
                         lineNumber = functionNode.startPoint.row + 1
                     )
                 )
@@ -172,8 +132,8 @@ class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
         return ParseResult(
             sourceFile = SourceFile(
                 path = file.path,
-                language = if (isKotlin) "Kotlin" else "Java",
-                packageName = packageName,
+                language = "C#",
+                packageName = currentNamespace ?: "csharp",
                 lastModified = file.lastModified(),
                 sha256 = HashUtils.sha256(file)
             ),

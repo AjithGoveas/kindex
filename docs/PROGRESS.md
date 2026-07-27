@@ -28,3 +28,17 @@ This document details the completed development milestones and features of KInde
   - **Fallback Input Mappings:** Vim keys (`k`/`j`), WASD keys (`w`/`s`), and direct Option Selects (`1`-`6`) for robust cross-terminal support.
   - **Persistent Brand Art:** Clear block-spelled `KINDEX` welcome banner remains on top on every screen refresh.
   - **Contextual Help Cards:** Live tips display option details at the bottom of the screen as you scroll.
+
+### Phase 4: Extended Multi-Language Support
+- **Unified S-Expression Query Engine:** Redesigned all 8 extractors (Kotlin/Java, Rust, C, C++, C#, JS/TS, Go, CSS) to use declarative S-expressions (`TSQuery`) instead of procedural walked loops, maximizing native performance.
+- **Hierarchical Nesting Resolution:** Implemented byte-range line-range overlap containment resolution (`resolveNesting` in `BaseExtractor.kt`) to resolve method-to-class nesting hierarchy.
+- **Native Grouped Captures:** Developed a custom `MatchedGroup` grouping mechanism mapping to native `TSQueryMatch` structures, preventing nested match conflicts.
+- **Syntactic AST Extractors:** Added support for **C, C++, C#, JavaScript/JSX, TypeScript/TSX, Go, and CSS**.
+- **Universal Symbols Extraction:**
+  - C/C++: namespaces, function definitions, structs/unions, preprocessor include links.
+  - C#: namespaces, classes, interfaces, methods, using directives.
+  - JS/TS: imports, classes, functions, methods.
+  - Go: packages, imports, structs, interfaces, methods, functions.
+  - CSS: classes and ID selectors.
+- **Dependency Version Synchronizing:** Synchronized tree-sitter language parser releases to `0.23.x` to prevent classpath linkage errors.
+

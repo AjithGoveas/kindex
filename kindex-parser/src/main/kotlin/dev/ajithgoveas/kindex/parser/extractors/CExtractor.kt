@@ -5,18 +5,16 @@ import dev.ajithgoveas.kindex.parser.HashUtils
 import org.treesitter.*
 import java.io.File
 
-class RustExtractor : BaseExtractor("Rust", listOf("rs")) {
+class CExtractor : BaseExtractor("C", listOf("c", "h")) {
 
     override fun extract(file: File): ParseResult {
-        val tsLanguage = TreeSitterRust()
+        val tsLanguage = TreeSitterC()
 
         val queryStr = """
-            (use_declaration (use_clause) @import)
-            (struct_item name: (type_identifier) @class_name) @class_node
-            (union_item name: (type_identifier) @class_name) @class_node
-            (trait_item name: (type_identifier) @interface_name) @interface_node
-            (function_item name: (identifier) @function_name) @function_node
-            (impl_item trait: (type_identifier)? @impl_trait type: (type_identifier) @impl_name) @impl_node
+            (preproc_include path: [ (string_literal) (system_lib_string) ] @import)
+            (struct_specifier name: (type_identifier) @class_name) @class_node
+            (union_specifier name: (type_identifier) @class_name) @class_node
+            (function_declarator declarator: (identifier) @function_name) @function_node
         """.trimIndent()
 
         val sourceCode = file.readText()
@@ -30,19 +28,12 @@ class RustExtractor : BaseExtractor("Rust", listOf("rs")) {
             val matchedImport = group.text["import"]
             val className = group.text["class_name"]
             val classNode = group.captures["class_node"]
-            val interfaceName = group.text["interface_name"]
-            val interfaceNode = group.captures["interface_node"]
             val functionName = group.text["function_name"]
             val functionNode = group.captures["function_node"]
-            val implName = group.text["impl_name"]
-            val implTrait = group.text["impl_trait"]
-            val implNode = group.captures["impl_node"]
 
             if (matchedImport != null) {
-                val imported = matchedImport.replace("use", "").trim(' ', ';')
-                if (imported.isNotEmpty()) {
-                    edges.add(Edge(file.path, imported, RelationType.IMPORTS))
-                }
+                val imported = matchedImport.trim(' ', '"', '<', '>')
+                edges.add(Edge(file.path, imported, RelationType.IMPORTS))
             }
 
             if (className != null && classNode != null) {
@@ -52,34 +43,12 @@ class RustExtractor : BaseExtractor("Rust", listOf("rs")) {
                         name = className,
                         type = SymbolType.CLASS,
                         filePath = file.path,
-                        packageName = "crate",
+                        packageName = "c",
                         lineNumber = classNode.startPoint.row + 1
                     )
                 )
                 edges.add(Edge(file.path, className, RelationType.CONTAINS))
                 classLineRanges.add(ClassLineRange(className, classNode.startPoint.row + 1, classNode.endPoint.row + 1))
-            }
-
-            if (interfaceName != null && interfaceNode != null) {
-                symbols.add(
-                    Symbol(
-                        id = interfaceName,
-                        name = interfaceName,
-                        type = SymbolType.INTERFACE,
-                        filePath = file.path,
-                        packageName = "crate",
-                        lineNumber = interfaceNode.startPoint.row + 1
-                    )
-                )
-                edges.add(Edge(file.path, interfaceName, RelationType.CONTAINS))
-                classLineRanges.add(ClassLineRange(interfaceName, interfaceNode.startPoint.row + 1, interfaceNode.endPoint.row + 1))
-            }
-
-            if (implName != null && implNode != null) {
-                classLineRanges.add(ClassLineRange(implName, implNode.startPoint.row + 1, implNode.endPoint.row + 1))
-                if (implTrait != null) {
-                    edges.add(Edge(implName, implTrait, RelationType.EXTENDS))
-                }
             }
 
             if (functionName != null && functionNode != null) {
@@ -89,7 +58,7 @@ class RustExtractor : BaseExtractor("Rust", listOf("rs")) {
                         name = functionName,
                         type = SymbolType.FUNCTION,
                         filePath = file.path,
-                        packageName = "crate",
+                        packageName = "c",
                         lineNumber = functionNode.startPoint.row + 1
                     )
                 )
@@ -102,8 +71,8 @@ class RustExtractor : BaseExtractor("Rust", listOf("rs")) {
         return ParseResult(
             sourceFile = SourceFile(
                 path = file.path,
-                language = "Rust",
-                packageName = "crate",
+                language = "C",
+                packageName = "c",
                 lastModified = file.lastModified(),
                 sha256 = HashUtils.sha256(file)
             ),

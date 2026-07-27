@@ -5,19 +5,28 @@ import dev.ajithgoveas.kindex.parser.HashUtils
 import org.treesitter.*
 import java.io.File
 
-class RustExtractor : BaseExtractor("Rust", listOf("rs")) {
+class JavaScriptExtractor : BaseExtractor("JavaScript/TypeScript", listOf("js", "jsx", "ts", "tsx")) {
 
     override fun extract(file: File): ParseResult {
-        val tsLanguage = TreeSitterRust()
+        val isTypeScript = file.extension in listOf("ts", "tsx")
+        val tsLanguage = if (isTypeScript) TreeSitterTypescript() else TreeSitterJavascript()
 
-        val queryStr = """
-            (use_declaration (use_clause) @import)
-            (struct_item name: (type_identifier) @class_name) @class_node
-            (union_item name: (type_identifier) @class_name) @class_node
-            (trait_item name: (type_identifier) @interface_name) @interface_node
-            (function_item name: (identifier) @function_name) @function_node
-            (impl_item trait: (type_identifier)? @impl_trait type: (type_identifier) @impl_name) @impl_node
-        """.trimIndent()
+        val queryStr = if (isTypeScript) {
+            """
+                (import_statement source: (string) @import)
+                (class_declaration name: (identifier) @class_name) @class_node
+                (interface_declaration name: (identifier) @interface_name) @interface_node
+                (function_declaration name: (identifier) @function_name) @function_node
+                (method_definition name: (property_identifier) @function_name) @function_node
+            """.trimIndent()
+        } else {
+            """
+                (import_statement source: (string) @import)
+                (class_declaration name: (identifier) @class_name) @class_node
+                (function_declaration name: (identifier) @function_name) @function_node
+                (method_definition name: (property_identifier) @function_name) @function_node
+            """.trimIndent()
+        }
 
         val sourceCode = file.readText()
         val symbols = mutableListOf<Symbol>()
@@ -34,15 +43,10 @@ class RustExtractor : BaseExtractor("Rust", listOf("rs")) {
             val interfaceNode = group.captures["interface_node"]
             val functionName = group.text["function_name"]
             val functionNode = group.captures["function_node"]
-            val implName = group.text["impl_name"]
-            val implTrait = group.text["impl_trait"]
-            val implNode = group.captures["impl_node"]
 
             if (matchedImport != null) {
-                val imported = matchedImport.replace("use", "").trim(' ', ';')
-                if (imported.isNotEmpty()) {
-                    edges.add(Edge(file.path, imported, RelationType.IMPORTS))
-                }
+                val imported = matchedImport.trim(' ', '"', '\'')
+                edges.add(Edge(file.path, imported, RelationType.IMPORTS))
             }
 
             if (className != null && classNode != null) {
@@ -52,12 +56,26 @@ class RustExtractor : BaseExtractor("Rust", listOf("rs")) {
                         name = className,
                         type = SymbolType.CLASS,
                         filePath = file.path,
-                        packageName = "crate",
+                        packageName = "js_module",
                         lineNumber = classNode.startPoint.row + 1
                     )
                 )
                 edges.add(Edge(file.path, className, RelationType.CONTAINS))
                 classLineRanges.add(ClassLineRange(className, classNode.startPoint.row + 1, classNode.endPoint.row + 1))
+
+                // JS/TS inheritance
+                val braceIdx = sourceCode.indexOf('{', classNode.startByte)
+                val headerText = if (braceIdx != -1 && braceIdx > classNode.startByte) {
+                    sourceCode.substring(classNode.startByte, braceIdx)
+                } else {
+                    sourceCode.substring(classNode.startByte, classNode.endByte)
+                }
+                if (headerText.contains("extends")) {
+                    val extended = headerText.substringAfter("extends").trim().substringBefore("{").trim()
+                    if (extended.isNotEmpty()) {
+                        edges.add(Edge(className, extended, RelationType.EXTENDS))
+                    }
+                }
             }
 
             if (interfaceName != null && interfaceNode != null) {
@@ -67,18 +85,25 @@ class RustExtractor : BaseExtractor("Rust", listOf("rs")) {
                         name = interfaceName,
                         type = SymbolType.INTERFACE,
                         filePath = file.path,
-                        packageName = "crate",
+                        packageName = "js_module",
                         lineNumber = interfaceNode.startPoint.row + 1
                     )
                 )
                 edges.add(Edge(file.path, interfaceName, RelationType.CONTAINS))
                 classLineRanges.add(ClassLineRange(interfaceName, interfaceNode.startPoint.row + 1, interfaceNode.endPoint.row + 1))
-            }
 
-            if (implName != null && implNode != null) {
-                classLineRanges.add(ClassLineRange(implName, implNode.startPoint.row + 1, implNode.endPoint.row + 1))
-                if (implTrait != null) {
-                    edges.add(Edge(implName, implTrait, RelationType.EXTENDS))
+                // TS interface extends inheritance
+                val braceIdx = sourceCode.indexOf('{', interfaceNode.startByte)
+                val headerText = if (braceIdx != -1 && braceIdx > interfaceNode.startByte) {
+                    sourceCode.substring(interfaceNode.startByte, braceIdx)
+                } else {
+                    sourceCode.substring(interfaceNode.startByte, interfaceNode.endByte)
+                }
+                if (headerText.contains("extends")) {
+                    val extended = headerText.substringAfter("extends").trim().substringBefore("{").trim()
+                    if (extended.isNotEmpty()) {
+                        edges.add(Edge(interfaceName, extended, RelationType.EXTENDS))
+                    }
                 }
             }
 
@@ -89,7 +114,7 @@ class RustExtractor : BaseExtractor("Rust", listOf("rs")) {
                         name = functionName,
                         type = SymbolType.FUNCTION,
                         filePath = file.path,
-                        packageName = "crate",
+                        packageName = "js_module",
                         lineNumber = functionNode.startPoint.row + 1
                     )
                 )
@@ -102,8 +127,8 @@ class RustExtractor : BaseExtractor("Rust", listOf("rs")) {
         return ParseResult(
             sourceFile = SourceFile(
                 path = file.path,
-                language = "Rust",
-                packageName = "crate",
+                language = if (isTypeScript) "TypeScript" else "JavaScript",
+                packageName = "js_module",
                 lastModified = file.lastModified(),
                 sha256 = HashUtils.sha256(file)
             ),

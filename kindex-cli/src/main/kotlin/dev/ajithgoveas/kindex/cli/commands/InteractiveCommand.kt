@@ -10,6 +10,7 @@ import com.github.ajalt.mordant.table.table
 import com.github.ajalt.mordant.rendering.BorderType
 import com.github.ajalt.mordant.terminal.Terminal
 import dev.ajithgoveas.kindex.storage.IndexStorage
+import dev.ajithgoveas.kindex.parser.extractors.*
 import org.jline.terminal.TerminalBuilder
 import org.jline.keymap.BindingReader
 import org.jline.keymap.KeyMap
@@ -63,9 +64,16 @@ class InteractiveCommand : CliktCommand(
         )
         t.println(cyan("Analyzing codebase structures, please wait..."))
         
-        val extractor = dev.ajithgoveas.kindex.parser.extractors.KotlinJavaExtractor()
-        val rustExtractor = dev.ajithgoveas.kindex.parser.extractors.RustExtractor()
-        val extractors = listOf(extractor, rustExtractor)
+        val extractors = listOf(
+            KotlinJavaExtractor(),
+            RustExtractor(),
+            CExtractor(),
+            CppExtractor(),
+            CSharpExtractor(),
+            JavaScriptExtractor(),
+            GoExtractor(),
+            CssExtractor()
+        )
         val walkedFiles = directory.walkTopDown()
             .filter { file -> file.isFile && extractors.any { it.supports(file) } }
             .filter { !it.path.contains("/build/") && !it.path.contains("/.gradle/") && !it.path.contains("/.kindex/") }
