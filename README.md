@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  KIndex is a local-first, offline-ready developer tool that scans software projects, extracts syntactic symbols using concrete syntax trees, and builds a queryable knowledge graph stored directly in a SQLite database.
+  KIndex is a local-first, offline-ready developer tool that scans software projects, extracts syntactic symbols using native concrete syntax trees, and builds a queryable knowledge graph stored directly in a local SQLite database.
 </p>
 
 ---
@@ -22,11 +22,11 @@
 
 - [💡 Project Vision](#-project-vision)
 - [🌟 Key Features](#-key-features)
-- [🏗️ System Architecture](#️-system-architecture)
+- [🏗️ System Architecture](#-system-architecture)
 - [📦 Module Breakdown](#-module-breakdown)
 - [🚀 Quick Start & Usage](#-quick-start--usage)
-- [⚙️ Tech Stack](#️-tech-stack)
-- [🗺️ Roadmap & Milestones](#️-roadmap--milestones)
+- [⚙️ Tech Stack](#-tech-stack)
+- [🗺️ Roadmap & Milestones](#-roadmap--milestones)
 - [🤝 Contributing](#-contributing)
 - [📄 License](#-license)
 
@@ -44,10 +44,12 @@
 ## 🌟 Key Features
 
 *   **🔍 AST-Based Code Analysis** — Leverages Tree-sitter for lightning-fast, high-precision concrete syntax tree extraction.
-*   **🌳 Symbol Graph Construction** — Automatically maps packages, files, classes, methods, fields, and imports.
-*   **🔗 Relationship Mapping** — Traces dependencies, inheritance, method overrides, and cross-file usage patterns.
+*   **🌐 S-Expression Query Engine** — Combines declarative native Tree-sitter queries (`TSQuery`) with parent match grouping for high-fidelity extraction.
+*   **📐 Hierarchical Nesting Resolution** — Automatically resolves lexical member scopes (e.g. member functions inside classes) using byte-range bounding containment logic.
+*   **🚀 Multi-Language Support** — Fully indexes **Java, Kotlin, Rust, C, C++, C#, JavaScript (JSX), TypeScript (TSX), Go, and CSS**.
+*   **🌳 Symbol Graph Construction** — Automatically maps packages, files, classes, interfaces, methods, fields, and imports.
 *   **💾 Local & SQLite-Powered** — Stores results in a single SQLite database file. Completely offline; your code never leaves your computer.
-*   **💻 Interactive CLI Console** — Query symbols, find references, and view dependencies straight from your terminal.
+*   **💻 Interactive CLI & TUI Console** — Query symbols, check metrics, search for dead code, and navigate scopes straight from a rich terminal interface.
 
 ---
 
@@ -62,7 +64,8 @@ flowchart TD
     subgraph Core Analysis Pipeline
         Scanner[Scanner Module]
         Parser[Tree-Sitter Parser]
-        Extractor[Symbol & Relationship Extractor]
+        QueryEngine[S-Expression TSQuery Engine]
+        Extractor[Hierarchical Resolver]
     end
 
     subgraph Storage Layer
@@ -71,19 +74,22 @@ flowchart TD
 
     subgraph User Interface
         CLI[Clikt CLI Engine]
+        TUI[JLine Interactive TUI]
     end
 
     Repo -->|Scan directories| Scanner
     Scanner -->|Source files| Parser
-    Parser -->|AST Nodes| Extractor
+    Parser -->|AST Nodes| QueryEngine
+    QueryEngine -->|Matched Groups| Extractor
     Extractor -->|Relational Entities| DB
     DB <-->|SQL Queries| CLI
+    DB <-->|Arrow-Key Navigation| TUI
     
     classDef main fill:#5C6BC0,stroke:#3F51B5,stroke-width:2px,color:#fff;
     classDef storage fill:#66BB6A,stroke:#4CAF50,stroke-width:2px,color:#fff;
     classDef input fill:#FFA726,stroke:#F57C00,stroke-width:2px,color:#fff;
     
-    class Scanner,Parser,Extractor main;
+    class Scanner,Parser,QueryEngine,Extractor main;
     class DB storage;
     class Repo input;
 ```
@@ -97,9 +103,9 @@ The project is structured as a Gradle multi-module project for modularity and se
 | Module | Purpose | Description |
 | :--- | :--- | :--- |
 | [**`kindex-core`**](file:///c:/Users/ajith/Videos/Projects/KIndex/kindex-core) | Core Engines | Defines domain models, shared interfaces, and indexing orchestrator. |
-| [**`kindex-parser`**](file:///c:/Users/ajith/Videos/Projects/KIndex/kindex-parser) | Parsing Layer | Invokes Tree-sitter to build AST structures for Kotlin/Java sources. |
+| [**`kindex-parser`**](file:///c:/Users/ajith/Videos/Projects/KIndex/kindex-parser) | Parsing Layer | Invokes Tree-sitter to execute S-expression query matches for all 8 grammar sets. |
 | [**`kindex-storage`**](file:///c:/Users/ajith/Videos/Projects/KIndex/kindex-storage) | Database & Schema | Handles the SQLite DB setup, migrations, and symbol persistence. |
-| [**`kindex-cli`**](file:///c:/Users/ajith/Videos/Projects/KIndex/kindex-cli) | Terminal UX | Standard CLI utility powered by Clikt and Mordant for interactive output. |
+| [**`kindex-cli`**](file:///c:/Users/ajith/Videos/Projects/KIndex/kindex-cli) | Terminal UX | Standard CLI utility and JLine arrow-key driven interactive dashboard. |
 
 ---
 
@@ -120,23 +126,29 @@ git clone https://github.com/AjithGoveas/kindex.git
 cd KIndex
 
 # Compile and package modules
-./gradlew build
+./gradlew build :kindex-cli:installDist
 ```
 
 ### CLI Command Reference
 
-Once built, you can run KIndex CLI using the Gradle run configuration or run the generated binary:
+Once built, you can run KIndex CLI using the generated distribution scripts:
 
 #### 1. Scan and Index a Repository
 Index a target repository and generate the SQLite database.
 ```bash
-./gradlew :kindex-cli:run --args="scan /path/to/target/project"
+./kindex-cli/build/install/kindex-cli/bin/kindex-cli scan /path/to/target/project
 ```
 
-#### 2. Query Symbols (Planned)
+#### 2. Query Symbols
 Find where classes or functions are declared.
 ```bash
-./gradlew :kindex-cli:run --args="query MyClassName"
+./kindex-cli/build/install/kindex-cli/bin/kindex-cli query -d /path/to/target/project "MySymbol"
+```
+
+#### 3. Interactive TUI Dashboard
+Explore codebase structure, search symbols, and list dead code with arrow keys:
+```bash
+./kindex-cli/build/install/kindex-cli/bin/kindex-cli interactive /path/to/target/project
 ```
 
 ---
@@ -146,7 +158,7 @@ Find where classes or functions are declared.
 - **Core Language:** [Kotlin 1.9.x](https://kotlinlang.org/)
 - **Build System:** Gradle (Kotlin DSL)
 - **CLI Framework:** [Clikt](https://ajalt.github.io/clikt/) (Multiplatform CLI library)
-- **Terminal Styling:** [Mordant](https://ajalt.github.io/mordant/) (ANSI styling & rich colors)
+- **Terminal Styling:** [Mordant](https://ajalt.github.io/mordant/) & [JLine](https://github.com/jline/jline3) (TUI rendering)
 - **AST Parsing Engine:** [Tree-sitter](https://tree-sitter.github.io/tree-sitter/)
 - **Database Backend:** SQLite
 
@@ -154,22 +166,20 @@ Find where classes or functions are declared.
 
 ## 🗺️ Roadmap & Milestones
 
-### **Phase 1: Foundation (In Progress)**
-- [x] Basic multi-module Gradle scaffolding
-- [x] Clikt-based CLI entry point (`scan` command stub)
-- [ ] Directory scanner with ignore rules (e.g., matching `.gitignore`)
-- [ ] SQLite database setup and schema creation
+### **Phase 1: Foundation (Completed)**
+- [x] Multi-module Gradle scaffolding
+- [x] Clikt-based CLI entry point
+- [x] SQLite database schema persistence
 
-### **Phase 2: Parsing & Indexing**
-- [ ] Tree-sitter bindings integration
-- [ ] Kotlin grammar support (class, method, and import extraction)
-- [ ] Java grammar support
-- [ ] Symbol-to-symbol reference graph generation
+### **Phase 2: Parsing & Indexing (Completed)**
+- [x] Tree-sitter bindings integration
+- [x] Declarative S-expression (`TSQuery`) parser engine
+- [x] Support for 8 major languages (Kotlin/Java, Rust, C/C++, C#, JS/TS, Go, CSS)
+- [x] Lexical scope-containment and inheritance resolution
 
-### **Phase 3: Search & UX**
-- [ ] Fuzzy search queries on symbols (e.g., wildcard, camelCase, regex)
-- [ ] Interactive text UI dashboard (TUI) for codebase navigation
-- [ ] Support for JSON/Markdown exports of code dependency graphs
+### **Phase 3: Interactive UX (Completed)**
+- [x] Command-line querying, dead code tracing, and statistics commands
+- [x] Rich Arrow-key driven TUI dashboard for interactive codebase traversal
 
 ---
 
