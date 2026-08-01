@@ -149,22 +149,22 @@ class InteractiveCommand : CliktCommand(
   █████   ██ ██ ██  ██ ██   ██ █████     ███  
   ██  ██  ██ ██  ██ ██ ██   ██ ██       ██ ██ 
   ██   ██ ██ ██   ████ ██████  ███████ ██   ██
-            """.trimIndent()).toString())
-            writer.println(dim("  ═══════════════════════════════════════════════").toString())
+            """.trimIndent()))
+            writer.println(dim("  ═══════════════════════════════════════════════"))
 
-            writer.println(bold(cyan("  🧭 INDEX KNOWLEDGE DASHBOARD")).toString())
-            writer.println(dim("  Use Arrow keys or WASD/Vim to navigate. Numbers 1-6 to select.\n").toString())
+            writer.println(bold(cyan("  🧭 INDEX KNOWLEDGE DASHBOARD")))
+            writer.println(dim("  Use Arrow keys or WASD/Vim to navigate. Numbers 1-6 to select.\n"))
             
             options.forEachIndexed { idx, option ->
                 if (idx == selectedIndex) {
-                    writer.println(bold(magenta("    ▸ $option")).toString())
+                    writer.println(bold(magenta("    ▸ $option")))
                 } else {
-                    writer.println(dim("      $option").toString())
+                    writer.println(dim("      $option"))
                 }
             }
 
             // Divider and contextual help tip
-            writer.println(dim("\n  ───────────────────────────────────────────────────────────").toString())
+            writer.println(dim("\n  ───────────────────────────────────────────────────────────"))
             writer.println("  " + yellow(helpTips[selectedIndex]) + "\n")
             writer.flush()
         }

@@ -1,0 +1,88 @@
+CREATE TABLE files (
+    id TEXT NOT NULL PRIMARY KEY,
+    path TEXT NOT NULL,
+    language TEXT NOT NULL,
+    packageName TEXT,
+    lastModified INTEGER NOT NULL,
+    sha256 TEXT NOT NULL
+);
+
+CREATE TABLE symbols (
+    id TEXT NOT NULL PRIMARY KEY,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL,
+    filePath TEXT NOT NULL,
+    packageName TEXT,
+    lineNumber INTEGER NOT NULL
+);
+
+CREATE TABLE relationships (
+    sourceId TEXT NOT NULL,
+    targetId TEXT NOT NULL,
+    relation TEXT NOT NULL,
+    PRIMARY KEY (sourceId, targetId, relation)
+);
+
+-- Indexes for performance on large codebases
+CREATE INDEX IF NOT EXISTS idx_symbols_file ON symbols(filePath);
+CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name);
+CREATE INDEX IF NOT EXISTS idx_rel_source ON relationships(sourceId);
+CREATE INDEX IF NOT EXISTS idx_rel_target ON relationships(targetId);
+
+-- Queries
+insertFile:
+INSERT OR REPLACE INTO files(id, path, language, packageName, lastModified, sha256)
+VALUES (?, ?, ?, ?, ?, ?);
+
+deleteFile:
+DELETE FROM files WHERE path = ?;
+
+clearFileData:
+DELETE FROM symbols WHERE filePath = ?;
+
+clearFileRelations:
+DELETE FROM relationships WHERE sourceId = ?;
+
+insertSymbol:
+INSERT OR REPLACE INTO symbols(id, name, type, filePath, packageName, lineNumber)
+VALUES (?, ?, ?, ?, ?, ?);
+
+insertRelationship:
+INSERT OR REPLACE INTO relationships(sourceId, targetId, relation)
+VALUES (?, ?, ?);
+
+getFilesMetadata:
+SELECT path, lastModified, sha256 FROM files;
+
+searchSymbols:
+SELECT id, name, type, filePath, packageName, lineNumber FROM symbols WHERE name LIKE :term;
+
+getAllSymbols:
+SELECT id, name, type, filePath, packageName, lineNumber FROM symbols;
+
+getIncomingDependencies:
+SELECT sourceId, targetId, relation FROM relationships WHERE targetId = ?;
+
+getOutgoingDependencies:
+SELECT sourceId, targetId, relation FROM relationships WHERE sourceId = ?;
+
+getAllEdges:
+SELECT sourceId, targetId, relation FROM relationships;
+
+getFileCount:
+SELECT COUNT(*) FROM files;
+
+getSymbolCount:
+SELECT COUNT(*) FROM symbols;
+
+getPackageCount:
+SELECT COUNT(DISTINCT packageName) FROM symbols WHERE packageName IS NOT NULL;
+
+getClassCount:
+SELECT COUNT(*) FROM symbols WHERE type = 'CLASS' OR type = 'INTERFACE';
+
+getFunctionCount:
+SELECT COUNT(*) FROM symbols WHERE type = 'FUNCTION';
+
+getEdgeCount:
+SELECT COUNT(*) FROM relationships;

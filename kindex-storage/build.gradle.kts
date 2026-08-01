@@ -1,5 +1,6 @@
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
+    alias(libs.plugins.sqldelight)
 }
 
 kotlin {
@@ -14,12 +15,21 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             implementation(project(":kindex-core"))
+            implementation(libs.sqldelight.runtime)
         }
         jvmMain.dependencies {
-            implementation(libs.exposed.core)
-            implementation(libs.exposed.dao)
-            implementation(libs.exposed.jdbc)
-            implementation(libs.sqlite.jdbc)
+            implementation(libs.sqldelight.driver.sqlite)
+        }
+        nativeMain.dependencies {
+            implementation(libs.sqldelight.driver.native)
+        }
+    }
+}
+
+sqldelight {
+    databases {
+        create("KIndexDatabase") {
+            packageName.set("dev.ajithgoveas.kindex.storage.db")
         }
     }
 }
