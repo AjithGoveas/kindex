@@ -20,6 +20,8 @@ bonede-css = "0.23.1"
 graalvm = "0.9.28"
 jline = "3.26.1"
 jansi = "2.4.1"
+okio = "3.9.0"
+
 
 [libraries]
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
@@ -43,8 +45,10 @@ tree-sitter-javascript = { group = "io.github.bonede", name = "tree-sitter-javas
 tree-sitter-css = { group = "io.github.bonede", name = "tree-sitter-css", version.ref = "bonede-css" }
 jline = { group = "org.jline", name = "jline", version.ref = "jline" }
 jansi = { group = "org.fusesource.jansi", name = "jansi", version.ref = "jansi" }
+okio = { group = "com.squareup.okio", name = "okio", version.ref = "okio" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 graalvm-native = { id = "org.graalvm.buildtools.native", version.ref = "graalvm" }

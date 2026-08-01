@@ -1,34 +1,54 @@
 plugins {
-    alias(libs.plugins.kotlin.jvm)
-    alias(libs.plugins.graalvm.native)
-    application
+    alias(libs.plugins.kotlin.multiplatform)
 }
 
-application {
-    mainClass.set("dev.ajithgoveas.kindex.cli.MainKt")
-}
+kotlin {
+    jvm()
 
-graalvmNative {
-    binaries {
-        named("main") {
-            imageName.set("kindex")
-            mainClass.set("dev.ajithgoveas.kindex.cli.MainKt")
+    mingwX64 {
+        binaries {
+            executable {
+                entryPoint = "dev.ajithgoveas.kindex.cli.main"
+            }
         }
     }
-}
+    linuxX64 {
+        binaries {
+            executable {
+                entryPoint = "dev.ajithgoveas.kindex.cli.main"
+            }
+        }
+    }
+    macosArm64 {
+        binaries {
+            executable {
+                entryPoint = "dev.ajithgoveas.kindex.cli.main"
+            }
+        }
+    }
+    macosX64 {
+        binaries {
+            executable {
+                entryPoint = "dev.ajithgoveas.kindex.cli.main"
+            }
+        }
+    }
 
-tasks.withType<JavaExec> {
-    standardInput = System.`in`
-}
+    applyDefaultHierarchyTemplate()
 
-dependencies {
-    implementation(project(":kindex-core"))
-    implementation(project(":kindex-parser"))
-    implementation(project(":kindex-storage"))
-
-    implementation(libs.clikt)
-    implementation(libs.mordant)
-    implementation(libs.jline)
-    implementation(libs.jansi)
-    implementation(libs.kotlinx.coroutines.core)
+    sourceSets {
+        commonMain.dependencies {
+            implementation(project(":kindex-core"))
+            implementation(project(":kindex-parser"))
+            implementation(project(":kindex-storage"))
+            implementation(libs.clikt)
+            implementation(libs.mordant)
+            implementation(libs.kotlinx.coroutines.core)
+            implementation(libs.okio)
+        }
+        jvmMain.dependencies {
+            implementation(libs.jline)
+            implementation(libs.jansi)
+        }
+    }
 }
