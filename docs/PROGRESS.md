@@ -1,44 +1,47 @@
 # Project Progress: KIndex Codebase Knowledge Engine
 
-This document details the completed development milestones and features of KIndex.
+This document tracks the milestones, architectural upgrades, and completed phases of **KIndex**.
 
-## Completed Features & Architecture
+---
 
-### Phase 1: Core Scanning & AST Extraction
-- **AST Parsing Framework:** Pluggable extractor architecture utilizing Tree-sitter bindings.
-- **Supported Languages:**
-  - **Kotlin & Java:** Extracted symbols (classes, interfaces, packages, methods, properties).
-  - **Rust:** Added `RustExtractor` for traits, structs, functions, and import declarations.
-- **Relational Persistence:** SQLite indexing scheme mapping symbols, source files, and containment relationships.
+## 🚀 Progress Checklist
 
-### Phase 2: Knowledge Graph Resolution
-- **Import Resolution (`SymbolResolver`):** Global resolution mapping raw imports to fully qualified name (FQN) symbols.
-- **Database Query APIs:** Native APIs for retrieving incoming dependents, outgoing calls, packages, and statistics.
-- **Subcommands Built:**
-  - `deps`: Trace caller / callee relationships.
-  - `stats`: Get structural codebase metrics.
-  - `dead`: Check for unreachable symbols.
-  - `export`: Export graphs to Mermaid format (`graph.mmd`).
+| Phase | Milestone | Focus | Status |
+| :--- | :--- | :--- | :---: |
+| **Phase 1** | Foundation Scaffolding | Multi-module Gradle build DSL | **Complete ✅** |
+| **Phase 2** | AST Extraction Engine | Tree-sitter & declarative S-expressions | **Complete ✅** |
+| **Phase 3** | Interactive UI Console | Query CLI commands and arrow-key JLine TUI | **Complete ✅** |
+| **Phase 4** | 8 Language Support | C/C++, C#, Rust, JS/TS, Go, CSS parsers | **Complete ✅** |
+| **Phase 5** | KMP Refactor & Linker | KMP, SQLDelight DB, and call Reference Linker | **Complete ✅** |
 
-### Phase 3: Optimizations & CLI Polish
-- **Incremental Scanning:** Scans check SHA-256 hashes and last-modified timestamps, updating changed/new files and pruning deleted nodes in milliseconds.
-- **Keyboard-Driven TUI (`interactive`):**
-  - Fully interactive terminal menu shell.
-  - Real-time **Arrow-Key Navigation** powered by JLine & JAnsi raw Console API integrations.
-  - **Fallback Input Mappings:** Vim keys (`k`/`j`), WASD keys (`w`/`s`), and direct Option Selects (`1`-`6`) for robust cross-terminal support.
-  - **Persistent Brand Art:** Clear block-spelled `KINDEX` welcome banner remains on top on every screen refresh.
-  - **Contextual Help Cards:** Live tips display option details at the bottom of the screen as you scroll.
+---
 
-### Phase 4: Extended Multi-Language Support
-- **Unified S-Expression Query Engine:** Redesigned all 8 extractors (Kotlin/Java, Rust, C, C++, C#, JS/TS, Go, CSS) to use declarative S-expressions (`TSQuery`) instead of procedural walked loops, maximizing native performance.
-- **Hierarchical Nesting Resolution:** Implemented byte-range line-range overlap containment resolution (`resolveNesting` in `BaseExtractor.kt`) to resolve method-to-class nesting hierarchy.
-- **Native Grouped Captures:** Developed a custom `MatchedGroup` grouping mechanism mapping to native `TSQueryMatch` structures, preventing nested match conflicts.
-- **Syntactic AST Extractors:** Added support for **C, C++, C#, JavaScript/JSX, TypeScript/TSX, Go, and CSS**.
-- **Universal Symbols Extraction:**
-  - C/C++: namespaces, function definitions, structs/unions, preprocessor include links.
-  - C#: namespaces, classes, interfaces, methods, using directives.
-  - JS/TS: imports, classes, functions, methods.
-  - Go: packages, imports, structs, interfaces, methods, functions.
-  - CSS: classes and ID selectors.
-- **Dependency Version Synchronizing:** Synchronized tree-sitter language parser releases to `0.23.x` to prevent classpath linkage errors.
+## 🛠️ Detailed Milestones
 
+### Phase 1 & 2: Core Scanner & AST Extraction
+*   **AST Parsing Layer:** Replaced procedural loops with tree-sitter S-expression query compiles (`TSQuery`), improving AST parsing throughput.
+*   **Nesting Overlap Containment:** Built bounding containment logic (`resolveNesting` in `BaseExtractor.kt`) mapping methods/functions to their containing struct or class definitions.
+
+---
+
+### Phase 3: CLI & Interactive Console
+*   **Scanner Incremental Checks:** Integrated SHA-256 hash checks and filesystem modified-times, allowing changed files to scan incrementally.
+*   **Terminal User Interface (TUI):** Developed a JLine terminal console with arrow-key navigation, option selects, context help headers, and ANSI styling.
+
+---
+
+### Phase 4: Extended Language Parsers
+*   **Multi-language Support:** Standardized symbol definitions across C, C++, C#, Rust, JavaScript, TypeScript, Go, CSS, Kotlin, and Java.
+*   **Library Synchronizations:** Aligned language query bindings to native version `0.23.x` to prevent symbol loading crashes.
+
+---
+
+### Phase 5: Modern KMP Migration & S-Expression Linker
+*   **Idiomatic KMP Scaffolding:** Migrated the codebase modules (`kindex-core`, `kindex-parser`, `kindex-storage`, `kindex-cli`) to Kotlin Multiplatform.
+*   **SQLDelight Multiplatform Storage:** Deleted Exposed ORM and migrated to SQLDelight for unified database persistence.
+*   **Post-Scan Reference Linker:** Implemented a call reference resolver in `SymbolResolver.kt` tracing local file declarations, package scopes, imports, and wildcards, building resolved `CALLS` dependencies.
+
+---
+
+> [!TIP]
+> Verified the codebase locally by scanning test repositories. Call dependencies (such as `CALLS -> com.example.Service`) resolve correctly and compile cleanly.

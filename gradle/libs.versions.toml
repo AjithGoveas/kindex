@@ -17,7 +17,6 @@ bonede-cpp = "0.23.4"
 bonede-csharp = "0.23.1"
 bonede-javascript = "0.23.1"
 bonede-css = "0.23.1"
-graalvm = "0.9.28"
 jline = "3.26.1"
 jansi = "2.4.1"
 okio = "3.9.0"
@@ -57,5 +56,4 @@ sqldelight-driver-native = { group = "app.cash.sqldelight", name = "native-drive
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
-graalvm-native = { id = "org.graalvm.buildtools.native", version.ref = "graalvm" }
 sqldelight = { id = "app.cash.sqldelight", version.ref = "sqldelight" }
