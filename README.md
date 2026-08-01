@@ -1,11 +1,11 @@
 # 🚀 KIndex
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Kotlin-1.9+-purple?style=for-the-badge&logo=kotlin" alt="Kotlin Version" />
+  <img src="https://img.shields.io/badge/Kotlin-2.x-purple?style=for-the-badge&logo=kotlin" alt="Kotlin Version" />
   <img src="https://img.shields.io/badge/Build-Gradle-blue?style=for-the-badge&logo=gradle" alt="Gradle Build" />
   <img src="https://img.shields.io/badge/Database-SQLite-green?style=for-the-badge&logo=sqlite" alt="SQLite Database" />
   <img src="https://img.shields.io/badge/Parser-Tree--Sitter-red?style=for-the-badge" alt="Tree-sitter Parser" />
-  <img src="https://img.shields.io/badge/Platform-Cross--Platform-lightgrey?style=for-the-badge" alt="Cross-Platform" />
+  <img src="https://img.shields.io/badge/Platform-Multiplatform-lightgrey?style=for-the-badge" alt="Kotlin Multiplatform" />
 </p>
 
 <p align="center">
@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  KIndex is a local-first, offline-ready developer tool that scans software projects, extracts syntactic symbols using native concrete syntax trees, and builds a queryable knowledge graph stored directly in a local SQLite database.
+  KIndex is an idiomatic, local-first <strong>Kotlin Multiplatform (KMP)</strong> developer tool that scans software projects, extracts syntactic symbols using native concrete syntax trees, and builds a queryable knowledge graph stored directly in a local SQLite database.
 </p>
 
 ---
@@ -47,8 +47,8 @@
 *   **🌐 S-Expression Query Engine** — Combines declarative native Tree-sitter queries (`TSQuery`) with parent match grouping for high-fidelity extraction.
 *   **📐 Hierarchical Nesting Resolution** — Automatically resolves lexical member scopes (e.g. member functions inside classes) using byte-range bounding containment logic.
 *   **🚀 Multi-Language Support** — Fully indexes **Java, Kotlin, Rust, C, C++, C#, JavaScript (JSX), TypeScript (TSX), Go, and CSS**.
-*   **🌳 Symbol Graph Construction** — Automatically maps packages, files, classes, interfaces, methods, fields, and imports.
-*   **💾 Local & SQLite-Powered** — Stores results in a single SQLite database file. Completely offline; your code never leaves your computer.
+*   **🔗 Reference & Call site Linking** — Extracts unresolved symbol method calls/class instantiations and resolves them post-scan to build a rich dependency graph.
+*   **💾 Local & SQLite-Powered** — Stores results in a single SQLite database file managed by **SQLDelight** for type-safe, multiplatform database execution.
 *   **💻 Interactive CLI & TUI Console** — Query symbols, check metrics, search for dead code, and navigate scopes straight from a rich terminal interface.
 
 ---
@@ -66,6 +66,7 @@ flowchart TD
         Parser[Tree-Sitter Parser]
         QueryEngine[S-Expression TSQuery Engine]
         Extractor[Hierarchical Resolver]
+        Linker[Post-Scan Reference Linker]
     end
 
     subgraph Storage Layer
@@ -81,7 +82,8 @@ flowchart TD
     Scanner -->|Source files| Parser
     Parser -->|AST Nodes| QueryEngine
     QueryEngine -->|Matched Groups| Extractor
-    Extractor -->|Relational Entities| DB
+    Extractor -->|Symbols & Call Refs| Linker
+    Linker -->|Resolved Dependency Edges| DB
     DB <-->|SQL Queries| CLI
     DB <-->|Arrow-Key Navigation| TUI
     
@@ -89,7 +91,7 @@ flowchart TD
     classDef storage fill:#66BB6A,stroke:#4CAF50,stroke-width:2px,color:#fff;
     classDef input fill:#FFA726,stroke:#F57C00,stroke-width:2px,color:#fff;
     
-    class Scanner,Parser,QueryEngine,Extractor main;
+    class Scanner,Parser,QueryEngine,Extractor,Linker main;
     class DB storage;
     class Repo input;
 ```
@@ -98,14 +100,14 @@ flowchart TD
 
 ## 📦 Module Breakdown
 
-The project is structured as a Gradle multi-module project for modularity and separation of concerns:
+The project is structured as an idiomatic Gradle Kotlin Multiplatform (KMP) project:
 
 | Module | Purpose | Description |
 | :--- | :--- | :--- |
-| [**`kindex-core`**](file:///c:/Users/ajith/Videos/Projects/KIndex/kindex-core) | Core Engines | Defines domain models, shared interfaces, and indexing orchestrator. |
-| [**`kindex-parser`**](file:///c:/Users/ajith/Videos/Projects/KIndex/kindex-parser) | Parsing Layer | Invokes Tree-sitter to execute S-expression query matches for all 8 grammar sets. |
-| [**`kindex-storage`**](file:///c:/Users/ajith/Videos/Projects/KIndex/kindex-storage) | Database & Schema | Handles the SQLite DB setup, migrations, and symbol persistence. |
-| [**`kindex-cli`**](file:///c:/Users/ajith/Videos/Projects/KIndex/kindex-cli) | Terminal UX | Standard CLI utility and JLine arrow-key driven interactive dashboard. |
+| [**`kindex-core`**](file:///c:/Users/ajith/Videos/Projects/KIndex/kindex-core) | Core Engines | Defines shared domain models, graph structures, and file interfaces. |
+| [**`kindex-parser`**](file:///c:/Users/ajith/Videos/Projects/KIndex/kindex-parser) | Parsing Layer | Invokes S-expression query matches for all 8 grammar sets via JNI on JVM. |
+| [**`kindex-storage`**](file:///c:/Users/ajith/Videos/Projects/KIndex/kindex-storage) | Database & Schema | Handles multiplatform SQLite persistence, migrations, and indexing via SQLDelight. |
+| [**`kindex-cli`**](file:///c:/Users/ajith/Videos/Projects/KIndex/kindex-cli) | Terminal UX | Clikt commands and JLine arrow-key driven interactive dashboard. |
 
 ---
 
@@ -155,27 +157,28 @@ Explore codebase structure, search symbols, and list dead code with arrow keys:
 
 ## ⚙️ Tech Stack
 
-- **Core Language:** [Kotlin 1.9.x](https://kotlinlang.org/)
+- **Core Language:** [Kotlin 2.x (Multiplatform)](https://kotlinlang.org/)
 - **Build System:** Gradle (Kotlin DSL)
 - **CLI Framework:** [Clikt](https://ajalt.github.io/clikt/) (Multiplatform CLI library)
 - **Terminal Styling:** [Mordant](https://ajalt.github.io/mordant/) & [JLine](https://github.com/jline/jline3) (TUI rendering)
 - **AST Parsing Engine:** [Tree-sitter](https://tree-sitter.github.io/tree-sitter/)
-- **Database Backend:** SQLite
+- **Database Backend:** SQLite via [SQLDelight](https://cashapp.github.io/sqldelight/)
 
 ---
 
 ## 🗺️ Roadmap & Milestones
 
 ### **Phase 1: Foundation (Completed)**
-- [x] Multi-module Gradle scaffolding
+- [x] Multi-module Gradle Kotlin Multiplatform structure setup
 - [x] Clikt-based CLI entry point
-- [x] SQLite database schema persistence
+- [x] SQLDelight local database schema and multiplatform driver persistence
 
 ### **Phase 2: Parsing & Indexing (Completed)**
 - [x] Tree-sitter bindings integration
 - [x] Declarative S-expression (`TSQuery`) parser engine
 - [x] Support for 8 major languages (Kotlin/Java, Rust, C/C++, C#, JS/TS, Go, CSS)
 - [x] Lexical scope-containment and inheritance resolution
+- [x] Post-Scan Reference Linker resolving call sites and instantiations
 
 ### **Phase 3: Interactive UX (Completed)**
 - [x] Command-line querying, dead code tracing, and statistics commands
