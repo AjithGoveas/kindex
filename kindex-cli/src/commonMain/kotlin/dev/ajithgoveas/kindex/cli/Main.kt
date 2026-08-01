@@ -121,7 +121,7 @@ class ScanCommand : CliktCommand(name = "scan", help = "Scan a repository direct
         val newSymbols = parseResults.flatMap { it.symbols }
         val allSymbolsMap = (unmodifiedSymbols + newSymbols).associateBy { it.id }
 
-        // Resolve imports using SymbolResolver
+        // Resolve imports and call references using SymbolResolver
         t.println("Resolving cross-symbol reference edges...")
         val resolver = SymbolResolver()
         val fullyResolvedResults = parseResults.map { result ->
@@ -129,10 +129,30 @@ class ScanCommand : CliktCommand(name = "scan", help = "Scan a repository direct
                 .filter { it.relation == dev.ajithgoveas.kindex.core.model.RelationType.IMPORTS }
                 .map { it.targetId }
 
+            // 1. Resolve imports
             val resolvedImportEdges = resolver.resolveImports(result.sourceFile.path, rawImportStrings, allSymbolsMap)
-            val containmentEdges = result.edges.filter { it.relation != dev.ajithgoveas.kindex.core.model.RelationType.IMPORTS }
 
-            result.copy(edges = containmentEdges + resolvedImportEdges)
+            // 2. Filter containment/extends edges
+            val staticEdges = result.edges.filter { 
+                it.relation == dev.ajithgoveas.kindex.core.model.RelationType.CONTAINS || 
+                it.relation == dev.ajithgoveas.kindex.core.model.RelationType.EXTENDS 
+            }
+
+            // 3. Resolve CALLS references
+            val unresolvedCalls = result.edges
+                .filter { it.relation == dev.ajithgoveas.kindex.core.model.RelationType.CALLS && it.targetId.startsWith("REF:") }
+
+            val resolvedCallEdges = unresolvedCalls.flatMap { callEdge ->
+                resolver.resolveCalls(
+                    sourceId = callEdge.sourceId, // e.g. "package#functionName"
+                    unresolvedCalls = listOf(callEdge.targetId),
+                    imports = rawImportStrings,
+                    currentPackage = result.sourceFile.packageName,
+                    symbolIndex = allSymbolsMap
+                )
+            }
+
+            result.copy(edges = staticEdges + resolvedImportEdges + resolvedCallEdges)
         }
 
         // Save incrementally

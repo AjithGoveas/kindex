@@ -7,6 +7,12 @@ import dev.ajithgoveas.kindex.parser.treesitter.*
 
 class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
 
+    data class MemberLineRange(
+        val symbolId: String,
+        val startLine: Int,
+        val endLine: Int
+    )
+
     override fun extract(file: MPFile): ParseResult {
         val isKotlin = file.extension == "kt"
         val tsLanguage = if (isKotlin) TreeSitterKotlin() else TreeSitterJava()
@@ -15,9 +21,9 @@ class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
             """
             (package_header (identifier) @package)
             (import_header (identifier) @import)
-            (class_declaration (simple_identifier) @class_name) @class_node
-            (interface_declaration (simple_identifier) @interface_name) @interface_node
+            (class_declaration (type_identifier) @class_name) @class_node
             (function_declaration (simple_identifier) @function_name) @function_node
+            (call_expression (simple_identifier) @call_name) @call_node
             """.trimIndent()
         } else {
             """
@@ -26,6 +32,8 @@ class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
             (class_declaration name: (identifier) @class_name) @class_node
             (interface_declaration name: (identifier) @interface_name) @interface_node
             (method_declaration name: (identifier) @function_name) @function_node
+            (method_invocation name: (identifier) @call_name) @call_node
+            (object_creation_expression type: (type_identifier) @class_instantiation) @call_node
             """.trimIndent()
         }
 
@@ -33,6 +41,11 @@ class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
         val symbols = mutableListOf<Symbol>()
         val edges = mutableListOf<Edge>()
         val classLineRanges = mutableListOf<ClassLineRange>()
+        val functionLineRanges = mutableListOf<MemberLineRange>()
+
+        // Temporary holders for unresolved call references
+        data class UnresolvedCall(val targetRef: String, val line: Int)
+        val unresolvedCalls = mutableListOf<UnresolvedCall>()
 
         var packageName: String? = null
 
@@ -47,6 +60,12 @@ class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
             val interfaceNode = group.captures["interface_node"]
             val functionName = group.text["function_name"]
             val functionNode = group.captures["function_node"]
+
+            // Reference / Call extraction
+            val callNode = group.captures["call_node"]
+            val callRecv = group.text["call_recv"]
+            val callName = group.text["call_name"]
+            val classInstantiation = group.text["class_instantiation"]
 
             if (matchedPackage != null) {
                 packageName = matchedPackage
@@ -164,10 +183,49 @@ class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
                     )
                 )
                 edges.add(Edge(file.path, fqn, RelationType.CONTAINS))
+                functionLineRanges.add(MemberLineRange(fqn, functionNode.getStartPoint().getRow() + 1, functionNode.getEndPoint().getRow() + 1))
+            }
+
+            // Capture calls / instantiations
+            if (callNode != null) {
+                val line = callNode.getStartPoint().getRow() + 1
+                if (classInstantiation != null) {
+                    unresolvedCalls.add(UnresolvedCall("REF:$classInstantiation", line))
+                } else if (callName != null) {
+                    val refName = if (callRecv != null) "$callRecv.$callName" else callName
+                    unresolvedCalls.add(UnresolvedCall("REF:$refName", line))
+                }
             }
         }
 
-        val resolvedContainmentEdges = resolveNesting(symbols, edges, classLineRanges)
+        // 1. Resolve containment edges of functions to classes based on line ranges
+        val resolvedContainmentEdges = resolveNesting(symbols, edges, classLineRanges).toMutableList()
+
+        // 2. Link unresolved call sites to their containing function, containing class, or the file
+        for (call in unresolvedCalls) {
+            // Find containing function first
+            val containingFunc = functionLineRanges
+                .filter { it.startLine <= call.line && it.endLine >= call.line }
+                .minByOrNull { it.endLine - it.startLine }
+
+            if (containingFunc != null) {
+                resolvedContainmentEdges.add(Edge(containingFunc.symbolId, call.targetRef, RelationType.CALLS))
+                continue
+            }
+
+            // Fallback to containing class
+            val containingClass = classLineRanges
+                .filter { it.startLine <= call.line && it.endLine >= call.line }
+                .minByOrNull { it.endLine - it.startLine }
+
+            if (containingClass != null) {
+                resolvedContainmentEdges.add(Edge(containingClass.symbolId, call.targetRef, RelationType.CALLS))
+                continue
+            }
+
+            // Fallback to the file itself
+            resolvedContainmentEdges.add(Edge(file.path, call.targetRef, RelationType.CALLS))
+        }
 
         return ParseResult(
             sourceFile = SourceFile(

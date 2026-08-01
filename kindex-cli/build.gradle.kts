@@ -3,7 +3,11 @@ plugins {
 }
 
 kotlin {
-    jvm()
+    jvm {
+        mainRun {
+            mainClass.set("dev.ajithgoveas.kindex.cli.MainKt")
+        }
+    }
 
     mingwX64 {
         binaries {

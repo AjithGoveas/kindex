@@ -3,7 +3,8 @@ package dev.ajithgoveas.kindex.core.model
 enum class RelationType {
     CONTAINS,   // File contains Class, Class contains Method
     IMPORTS,    // File imports Class/Package
-    EXTENDS     // Class implements/extends Interface/Class
+    EXTENDS,    // Class implements/extends Interface/Class
+    CALLS       // Method/Class calls or references another Symbol
 }
 
 data class Edge(
