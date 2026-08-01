@@ -7,6 +7,12 @@ import dev.ajithgoveas.kindex.parser.treesitter.*
 
 class JavaScriptExtractor : BaseExtractor("JavaScript/TypeScript", listOf("js", "jsx", "ts", "tsx")) {
 
+    data class MemberLineRange(
+        val symbolId: String,
+        val startLine: Int,
+        val endLine: Int
+    )
+
     override fun extract(file: MPFile): ParseResult {
         val isTypeScript = file.extension in listOf("ts", "tsx")
         val tsLanguage = if (isTypeScript) TreeSitterTypescript() else TreeSitterJavascript()
@@ -14,10 +20,13 @@ class JavaScriptExtractor : BaseExtractor("JavaScript/TypeScript", listOf("js", 
         val queryStr = if (isTypeScript) {
             """
                 (import_statement source: (string) @import)
-                (class_declaration name: (identifier) @class_name) @class_node
-                (interface_declaration name: (identifier) @interface_name) @interface_node
+                (class_declaration name: (type_identifier) @class_name) @class_node
+                (interface_declaration name: (type_identifier) @interface_name) @interface_node
                 (function_declaration name: (identifier) @function_name) @function_node
                 (method_definition name: (property_identifier) @function_name) @function_node
+                (call_expression function: (member_expression object: (identifier) @call_recv property: (property_identifier) @call_name)) @call_node
+                (call_expression function: (identifier) @call_name) @call_node
+                (new_expression constructor: (identifier) @class_instantiation) @call_node
             """.trimIndent()
         } else {
             """
@@ -25,6 +34,9 @@ class JavaScriptExtractor : BaseExtractor("JavaScript/TypeScript", listOf("js", 
                 (class_declaration name: (identifier) @class_name) @class_node
                 (function_declaration name: (identifier) @function_name) @function_node
                 (method_definition name: (property_identifier) @function_name) @function_node
+                (call_expression function: (member_expression object: (identifier) @call_recv property: (property_identifier) @call_name)) @call_node
+                (call_expression function: (identifier) @call_name) @call_node
+                (new_expression constructor: (identifier) @class_instantiation) @call_node
             """.trimIndent()
         }
 
@@ -32,6 +44,10 @@ class JavaScriptExtractor : BaseExtractor("JavaScript/TypeScript", listOf("js", 
         val symbols = mutableListOf<Symbol>()
         val edges = mutableListOf<Edge>()
         val classLineRanges = mutableListOf<ClassLineRange>()
+        val functionLineRanges = mutableListOf<MemberLineRange>()
+
+        data class UnresolvedCall(val targetRef: String, val line: Int)
+        val unresolvedCalls = mutableListOf<UnresolvedCall>()
 
         val groups = runQuery(tsLanguage, sourceCode, queryStr)
 
@@ -43,6 +59,11 @@ class JavaScriptExtractor : BaseExtractor("JavaScript/TypeScript", listOf("js", 
             val interfaceNode = group.captures["interface_node"]
             val functionName = group.text["function_name"]
             val functionNode = group.captures["function_node"]
+
+            val callNode = group.captures["call_node"]
+            val callRecv = group.text["call_recv"]
+            val callName = group.text["call_name"]
+            val classInstantiation = group.text["class_instantiation"]
 
             if (matchedImport != null) {
                 val imported = matchedImport.trim(' ', '"', '\'')
@@ -119,10 +140,43 @@ class JavaScriptExtractor : BaseExtractor("JavaScript/TypeScript", listOf("js", 
                     )
                 )
                 edges.add(Edge(file.path, functionName, RelationType.CONTAINS))
+                functionLineRanges.add(MemberLineRange(functionName, functionNode.getStartPoint().getRow() + 1, functionNode.getEndPoint().getRow() + 1))
+            }
+
+            if (callNode != null) {
+                val line = callNode.getStartPoint().getRow() + 1
+                if (classInstantiation != null) {
+                    unresolvedCalls.add(UnresolvedCall("REF:$classInstantiation", line))
+                } else if (callName != null) {
+                    val refName = if (callRecv != null) "$callRecv.$callName" else callName
+                    unresolvedCalls.add(UnresolvedCall("REF:$refName", line))
+                }
             }
         }
 
-        val resolvedContainmentEdges = resolveNesting(symbols, edges, classLineRanges)
+        val resolvedContainmentEdges = resolveNesting(symbols, edges, classLineRanges).toMutableList()
+
+        for (call in unresolvedCalls) {
+            val containingFunc = functionLineRanges
+                .filter { it.startLine <= call.line && it.endLine >= call.line }
+                .minByOrNull { it.endLine - it.startLine }
+
+            if (containingFunc != null) {
+                resolvedContainmentEdges.add(Edge(containingFunc.symbolId, call.targetRef, RelationType.CALLS))
+                continue
+            }
+
+            val containingClass = classLineRanges
+                .filter { it.startLine <= call.line && it.endLine >= call.line }
+                .minByOrNull { it.endLine - it.startLine }
+
+            if (containingClass != null) {
+                resolvedContainmentEdges.add(Edge(containingClass.symbolId, call.targetRef, RelationType.CALLS))
+                continue
+            }
+
+            resolvedContainmentEdges.add(Edge(file.path, call.targetRef, RelationType.CALLS))
+        }
 
         return ParseResult(
             sourceFile = SourceFile(

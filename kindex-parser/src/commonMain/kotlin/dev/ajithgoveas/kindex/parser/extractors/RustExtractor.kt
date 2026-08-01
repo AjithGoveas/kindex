@@ -7,22 +7,34 @@ import dev.ajithgoveas.kindex.parser.treesitter.*
 
 class RustExtractor : BaseExtractor("Rust", listOf("rs")) {
 
+    data class MemberLineRange(
+        val symbolId: String,
+        val startLine: Int,
+        val endLine: Int
+    )
+
     override fun extract(file: MPFile): ParseResult {
         val tsLanguage = TreeSitterRust()
 
         val queryStr = """
-            (use_declaration (use_clause) @import)
+            (use_declaration) @import
             (struct_item name: (type_identifier) @class_name) @class_node
             (union_item name: (type_identifier) @class_name) @class_node
             (trait_item name: (type_identifier) @interface_name) @interface_node
             (function_item name: (identifier) @function_name) @function_node
             (impl_item trait: (type_identifier)? @impl_trait type: (type_identifier) @impl_name) @impl_node
+            (call_expression function: (field_expression value: (identifier) @call_recv field: (field_identifier) @call_name)) @call_node
+            (call_expression function: (identifier) @call_name) @call_node
         """.trimIndent()
 
         val sourceCode = file.readText()
         val symbols = mutableListOf<Symbol>()
         val edges = mutableListOf<Edge>()
         val classLineRanges = mutableListOf<ClassLineRange>()
+        val functionLineRanges = mutableListOf<MemberLineRange>()
+
+        data class UnresolvedCall(val targetRef: String, val line: Int)
+        val unresolvedCalls = mutableListOf<UnresolvedCall>()
 
         val groups = runQuery(tsLanguage, sourceCode, queryStr)
 
@@ -37,6 +49,10 @@ class RustExtractor : BaseExtractor("Rust", listOf("rs")) {
             val implName = group.text["impl_name"]
             val implTrait = group.text["impl_trait"]
             val implNode = group.captures["impl_node"]
+
+            val callNode = group.captures["call_node"]
+            val callRecv = group.text["call_recv"]
+            val callName = group.text["call_name"]
 
             if (matchedImport != null) {
                 val imported = matchedImport.replace("use", "").trim(' ', ';')
@@ -94,10 +110,41 @@ class RustExtractor : BaseExtractor("Rust", listOf("rs")) {
                     )
                 )
                 edges.add(Edge(file.path, functionName, RelationType.CONTAINS))
+                functionLineRanges.add(MemberLineRange(functionName, functionNode.getStartPoint().getRow() + 1, functionNode.getEndPoint().getRow() + 1))
+            }
+
+            if (callNode != null) {
+                val line = callNode.getStartPoint().getRow() + 1
+                if (callName != null) {
+                    val refName = if (callRecv != null) "$callRecv.$callName" else callName
+                    unresolvedCalls.add(UnresolvedCall("REF:$refName", line))
+                }
             }
         }
 
-        val resolvedContainmentEdges = resolveNesting(symbols, edges, classLineRanges)
+        val resolvedContainmentEdges = resolveNesting(symbols, edges, classLineRanges).toMutableList()
+
+        for (call in unresolvedCalls) {
+            val containingFunc = functionLineRanges
+                .filter { it.startLine <= call.line && it.endLine >= call.line }
+                .minByOrNull { it.endLine - it.startLine }
+
+            if (containingFunc != null) {
+                resolvedContainmentEdges.add(Edge(containingFunc.symbolId, call.targetRef, RelationType.CALLS))
+                continue
+            }
+
+            val containingClass = classLineRanges
+                .filter { it.startLine <= call.line && it.endLine >= call.line }
+                .minByOrNull { it.endLine - it.startLine }
+
+            if (containingClass != null) {
+                resolvedContainmentEdges.add(Edge(containingClass.symbolId, call.targetRef, RelationType.CALLS))
+                continue
+            }
+
+            resolvedContainmentEdges.add(Edge(file.path, call.targetRef, RelationType.CALLS))
+        }
 
         return ParseResult(
             sourceFile = SourceFile(
