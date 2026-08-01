@@ -1,3 +1,0 @@
-headers = tree_sitter/api.h
-headerFilter = tree_sitter/*
-package = org.treesitter
