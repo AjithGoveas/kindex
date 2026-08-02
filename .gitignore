@@ -91,3 +91,6 @@ Desktop.ini
 *.log
 *.tmp
 .env
+*.mmd
+*.dot
+*.json

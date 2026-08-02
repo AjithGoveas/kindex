@@ -79,14 +79,14 @@ Establish baseline performance characteristics of KIndex against large-scale pro
 
 ---
 
-### 🎨 Option 5: Multi-Format Graph Exporters (`kindex export`) [IN PROGRESS ⚙️]
+### 🎨 Option 5: Multi-Format Graph Exporters (`kindex export`) [COMPLETED ✅]
 
 Export repository architectural graph into multiple industry-standard diagram and data formats.
 
 * **Key Deliverables:**
-  - [ ] **Mermaid TD (`mermaid`)**: Export node-and-edge relationships in Mermaid syntax.
-  - [ ] **Graphviz DOT (`dot`)**: Export Graphviz `digraph KIndexGraph { ... }` format for visualization in OmniGraffle, Graphviz, or Gephi.
-  - [ ] **JSON Graph Format (`json`)**: Export structured node metadata and edge relation links for web visualizers (D3.js, Cytoscape.js).
+  - [x] **Mermaid TD (`mermaid`)**: Export node-and-edge relationships in Mermaid syntax.
+  - [x] **Graphviz DOT (`dot`)**: Export Graphviz `digraph KIndexGraph { ... }` format for visualization in OmniGraffle, Graphviz, or Gephi.
+  - [x] **JSON Graph Format (`json`)**: Export structured node metadata and edge relation links for web visualizers (D3.js, Cytoscape.js).
 
 ---
 

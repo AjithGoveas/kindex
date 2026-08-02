@@ -166,6 +166,19 @@ Install, inspect, or remove non-blocking background re-scan hooks for Git lifecy
 ./kindex-cli/build/install/kindex-cli/bin/kindex-cli hook uninstall /path/to/target/project
 ```
 
+#### 5. Multi-Format Graph Exporters
+Export repository architectural dependencies to Mermaid, Graphviz DOT, or JSON:
+```bash
+# Export Mermaid diagram (.mmd)
+./kindex-cli/build/install/kindex-cli/bin/kindex-cli export /path/to/target/project -f mermaid -o graph.mmd
+
+# Export Graphviz DOT (.dot)
+./kindex-cli/build/install/kindex-cli/bin/kindex-cli export /path/to/target/project -f dot -o graph.dot
+
+# Export JSON Graph (.json)
+./kindex-cli/build/install/kindex-cli/bin/kindex-cli export /path/to/target/project -f json -o graph.json
+```
+
 ---
 
 ## ⚙️ Tech Stack

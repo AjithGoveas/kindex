@@ -15,6 +15,7 @@ This document tracks the milestones, architectural upgrades, and completed phase
 | **Phase 5** | KMP Refactor & Linker | KMP, SQLDelight DB, and call Reference Linker | **Complete ✅** |
 | **Phase 6** | Git Hook Automation | Background re-scanning on post-commit and post-checkout | **Complete ✅** |
 | **Phase 7** | SQLite FTS5 Search Engine | Tokenized camelCase/snake_case fuzzy symbol search | **Complete ✅** |
+| **Phase 8** | Multi-Format Exporters | Graphviz DOT, JSON graph, and Mermaid exporters | **Complete ✅** |
 
 ---
 
@@ -56,6 +57,12 @@ This document tracks the milestones, architectural upgrades, and completed phase
 *   **Full-Text Search Virtual Table:** Created `symbols_fts` SQLite FTS5 virtual table for fast, tokenized symbol indexing.
 *   **Identifier Tokenizer:** Built `SymbolTokenizer` splitting identifiers on camelCase and snake_case boundaries (`UserServiceImpl` -> `User`, `Service`, `Impl`).
 *   **UTF-8 Byte Slicing Safety:** Updated `BaseExtractor` to slice source code by UTF-8 byte array indices, preventing string index out-of-bounds exceptions on multi-byte characters.
+
+---
+
+### Phase 8: Multi-Format Graph Exporters (`kindex export`)
+*   **Multiple Graph Formats:** Extended `ExportCommand` supporting Mermaid (`.mmd`), Graphviz DOT (`.dot`), and JSON Graph (`.json`) formats.
+*   **Structured Metadata Payload:** JSON export includes node metadata (`id`, `name`, `type`, `packageName`) and link relations (`source`, `target`, `relation`).
 
 ---
 
