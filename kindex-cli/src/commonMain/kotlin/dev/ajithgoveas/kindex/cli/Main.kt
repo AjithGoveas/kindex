@@ -258,7 +258,8 @@ fun main(args: Array<String>) {
         StatsCommand(),
         ExportCommand(),
         DeadCommand(),
-        HookCommand()
+        HookCommand(),
+        dev.ajithgoveas.kindex.cli.commands.FlowCommand()
     )
     getInteractiveCommand()?.let { commands.add(it) }
 

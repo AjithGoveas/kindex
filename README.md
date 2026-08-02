@@ -166,17 +166,23 @@ Install, inspect, or remove non-blocking background re-scan hooks for Git lifecy
 ./kindex-cli/build/install/kindex-cli/bin/kindex-cli hook uninstall /path/to/target/project
 ```
 
-#### 5. Multi-Format Graph Exporters
-Export repository architectural dependencies to Mermaid, Graphviz DOT, or JSON:
+#### 5. Architectural Flow & Multi-Format Exporters (`kindex flow` / `kindex export`)
+Inspect entry points, architectural layers, and export GitDiagram-style hierarchical flow maps or granular wiring:
 ```bash
-# Export Mermaid diagram (.mmd)
-./kindex-cli/build/install/kindex-cli/bin/kindex-cli export /path/to/target/project -f mermaid -o graph.mmd
+# Terminal Architectural Flow Analysis
+./kindex-cli/build/install/kindex-cli/bin/kindex-cli flow /path/to/target/project
 
-# Export Graphviz DOT (.dot)
-./kindex-cli/build/install/kindex-cli/bin/kindex-cli export /path/to/target/project -f dot -o graph.dot
+# Default Overall Hierarchical Flow Export (GitDiagram style Mermaid TD)
+./kindex-cli/build/install/kindex-cli/bin/kindex-cli export /path/to/target/project
 
-# Export JSON Graph (.json)
-./kindex-cli/build/install/kindex-cli/bin/kindex-cli export /path/to/target/project -f json -o graph.json
+# Export File-to-File Wiring in Graphviz DOT (.dot)
+./kindex-cli/build/install/kindex-cli/bin/kindex-cli export /path/to/target/project -g file -f dot -o file_wiring.dot
+
+# Export Package/Module Wiring in JSON (.json)
+./kindex-cli/build/install/kindex-cli/bin/kindex-cli export /path/to/target/project -g package -f json -o pkg_wiring.json
+
+# Export N-Hop Connected Subgraph around a Focal Target
+./kindex-cli/build/install/kindex-cli/bin/kindex-cli export /path/to/target/project --focus SymbolResolver -f mermaid -o focus.mmd
 ```
 
 ---
