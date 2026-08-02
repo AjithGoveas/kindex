@@ -22,6 +22,7 @@ class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
             (package_header) @package
             (import_header) @import
             (class_declaration (type_identifier) @class_name) @class_node
+            (object_declaration (type_identifier) @class_name) @class_node
             (function_declaration (simple_identifier) @function_name) @function_node
             (call_expression (simple_identifier) @call_name) @call_node
             """.trimIndent()
@@ -68,14 +69,25 @@ class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
             val classInstantiation = group.text["class_instantiation"]
 
             if (matchedPackage != null) {
-                packageName = matchedPackage
+                packageName = matchedPackage.trim()
+                    .removePrefix("package")
+                    .trim()
+                    .substringBefore('\n')
+                    .trim()
+                    .ifEmpty { null }
             }
 
             if (matchedImport != null) {
                 edges.add(
                     Edge(
                         sourceId = file.path,
-                        targetId = matchedImport,
+                        targetId = matchedImport.trim()
+                            .removePrefix("import")
+                            .trim()
+                            .substringBefore('\n')
+                            .trim()
+                            .substringBefore(" as ")
+                            .trim(),
                         relation = RelationType.IMPORTS
                     )
                 )

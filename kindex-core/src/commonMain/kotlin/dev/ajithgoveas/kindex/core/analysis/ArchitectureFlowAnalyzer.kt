@@ -85,12 +85,12 @@ object ArchitectureFlowAnalyzer {
         }
 
         return symbols.map { sym ->
+            val path = sym.filePath.replace('\\', '/').lowercase()
             val layer = when {
-                sym.id in entryPoints -> ArchitecturalLayer.ENTRY_POINTS
-                sym.filePath.lowercase().contains("storage") || sym.filePath.lowercase().contains("db") -> ArchitecturalLayer.STORAGE
-                sym.filePath.lowercase().contains("extractor") || sym.filePath.lowercase().contains("resolver") || sym.filePath.lowercase().contains("parser") -> ArchitecturalLayer.SERVICES
-                (inDegree[sym.id] ?: 0) == 0 && (outDegree[sym.id] ?: 0) == 0 -> ArchitecturalLayer.UTILITIES
-                else -> ArchitecturalLayer.SERVICES
+                sym.id in entryPoints || path.contains("/cli/") || path.contains("command") || sym.name.contains("Main") -> ArchitecturalLayer.ENTRY_POINTS
+                path.contains("/storage/") || path.contains("/db/") || path.contains("database") || path.contains("sqlite") -> ArchitecturalLayer.STORAGE
+                path.contains("/parser/") || path.contains("/extractor/") || path.contains("/resolver/") || path.contains("treesitter") || path.contains("/core/") -> ArchitecturalLayer.SERVICES
+                else -> ArchitecturalLayer.UTILITIES
             }
 
             ComponentNode(

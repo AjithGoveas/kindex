@@ -11,6 +11,7 @@ import com.github.ajalt.mordant.rendering.TextStyles.bold
 import com.github.ajalt.mordant.table.table
 import com.github.ajalt.mordant.terminal.Terminal
 import dev.ajithgoveas.kindex.core.model.ParseResult
+import dev.ajithgoveas.kindex.core.analysis.ModuleGraphAnalyzer
 import dev.ajithgoveas.kindex.parser.extractors.*
 import dev.ajithgoveas.kindex.core.io.HashUtils
 import dev.ajithgoveas.kindex.core.io.MPFile
@@ -47,7 +48,7 @@ fun walkFiles(dir: MPFile): List<MPFile> {
     val files = dir.listFiles() ?: return emptyList()
     for (file in files) {
         val path = file.path.replace('\\', '/')
-        if (path.contains("/build/") || path.contains("/.gradle/") || path.contains("/.kindex/") || path.contains("/nativeInterop/") || path.contains("/cinterop/") || path.contains("/dist/")) {
+        if (path.contains("/build/") || path.contains("/.gradle/") || path.contains("/.kindex/") || path.contains("/nativeInterop/") || path.contains("/cinterop/") || path.contains("/dist/") || path.contains("/tsbuild/")) {
             continue
         }
         if (file.isDirectory) {
@@ -163,7 +164,11 @@ class ScanCommand : CliktCommand(name = "scan", help = "Scan a repository direct
                 .map { it.targetId }
 
             // 1. Resolve imports
-            val resolvedImportEdges = resolver.resolveImports(result.sourceFile.path, rawImportStrings, allSymbolsMap)
+            val importResolution = resolver.resolveImportsDetailed(result.sourceFile.path, rawImportStrings, allSymbolsMap)
+            val resolvedImportEdges = importResolution.resolved
+            val externalEdges = importResolution.unresolved.map {
+                dev.ajithgoveas.kindex.core.model.Edge(result.sourceFile.path, it, dev.ajithgoveas.kindex.core.model.RelationType.IMPORTS)
+            }
 
             // 2. Filter containment/extends edges
             val staticEdges = result.edges.filter { 
@@ -185,7 +190,7 @@ class ScanCommand : CliktCommand(name = "scan", help = "Scan a repository direct
                 )
             }
 
-            result.copy(edges = staticEdges + resolvedImportEdges + resolvedCallEdges)
+            result.copy(edges = staticEdges + resolvedImportEdges + resolvedCallEdges + externalEdges)
         }
 
         // Save incrementally
@@ -219,6 +224,22 @@ class ScanCommand : CliktCommand(name = "scan", help = "Scan a repository direct
             t.println("\n" + bold("Total Files in Index:") + " ${finalStats.fileCount}")
             t.println(bold("Total Symbols in Index:") + " ${finalStats.symbolCount}")
             t.println(bold("Total Relationships in Index:") + " ${finalStats.edgeCount}")
+            emitArchitectureGraphs(storage, t, dbFile)
+        }
+    }
+
+    private fun emitArchitectureGraphs(storage: IndexStorage, t: Terminal, dbFile: MPFile) {
+        try {
+            val symbols = storage.getAllSymbols()
+            if (symbols.isEmpty()) return
+            val edges = storage.getAllEdges()
+            val base = dbFile.path.removeSuffix("index.db") + "graph"
+            MPFile("$base.mmd").writeText(ModuleGraphAnalyzer.renderMermaid(symbols, edges))
+            MPFile("$base.dot").writeText(ModuleGraphAnalyzer.renderDot(symbols, edges))
+            MPFile("$base.json").writeText(ModuleGraphAnalyzer.renderJson(symbols, edges))
+            t.println(green("\n✓ Architecture graphs written to .kindex/graph.{mmd,dot,json}\n"))
+        } catch (e: Exception) {
+            t.println(yellow("⚠ Could not write architecture graphs: ${e.message}"))
         }
     }
 }

@@ -16,16 +16,24 @@ actual typealias TSParser = org.treesitter.TSParser
 actual typealias TSTree = org.treesitter.TSTree
 actual typealias TSNode = org.treesitter.TSNode
 actual typealias TSPoint = org.treesitter.TSPoint
-actual typealias TSQuery = org.treesitter.TSQuery
+actual class TSQuery actual constructor(
+    language: TSLanguage,
+    queryStr: String
+) {
+    val delegate = org.treesitter.TSQuery(language, queryStr)
+
+    actual fun isValid(): Boolean = true
+
+    actual fun getCaptureNameForId(id: Int): String = delegate.getCaptureNameForId(id)
+}
 
 fun TSNode.isNull(): Boolean = this.isNull
-fun TSQuery.isValid(): Boolean = true
 
 actual class TSQueryCursor actual constructor() {
     private val delegate = org.treesitter.TSQueryCursor()
 
     actual fun exec(query: TSQuery, node: TSNode) {
-        delegate.exec(query, node)
+        delegate.exec(query.delegate, node)
     }
 
     actual fun getMatches(): Iterator<TSQueryMatch> {

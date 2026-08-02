@@ -5,32 +5,37 @@ import dev.ajithgoveas.kindex.core.model.RelationType
 import dev.ajithgoveas.kindex.core.model.Symbol
 import dev.ajithgoveas.kindex.core.model.SymbolType
 
+data class ImportResolution(
+    val resolved: List<Edge>,
+    val unresolved: List<String>
+)
+
 class SymbolResolver {
     /**
      * Resolves raw import strings against known symbols to build explicit dependency edges.
+     * Imports that cannot be resolved to any indexed symbol are reported as [ImportResolution.unresolved]
+     * so they can be surfaced as external dependencies in the module graph.
      */
     fun resolveImports(
         filePath: String,
         rawImports: List<String>,
         symbolIndex: Map<String, Symbol>
-    ): List<Edge> {
+    ): List<Edge> = resolveImportsDetailed(filePath, rawImports, symbolIndex).resolved
+
+    fun resolveImportsDetailed(
+        filePath: String,
+        rawImports: List<String>,
+        symbolIndex: Map<String, Symbol>
+    ): ImportResolution {
         val resolvedEdges = mutableListOf<Edge>()
+        val unresolvedImports = mutableListOf<String>()
 
         for (importFqn in rawImports) {
-            val matchedSymbol = symbolIndex[importFqn]
-            if (matchedSymbol != null) {
-                resolvedEdges.add(
-                    Edge(
-                        sourceId = filePath,
-                        targetId = matchedSymbol.filePath,
-                        relation = RelationType.IMPORTS
-                    )
-                )
-            } else if (importFqn.endsWith(".*")) {
-                val pkgPrefix = importFqn.removeSuffix(".*")
-                val pkgMatches = symbolIndex.values.filter { it.packageName == pkgPrefix }
-                
-                for (sym in pkgMatches) {
+            var matched = false
+
+            val addResolvedEdge = { sym: Symbol ->
+                matched = true
+                if (sym.filePath != filePath) {
                     resolvedEdges.add(
                         Edge(
                             sourceId = filePath,
@@ -39,26 +44,51 @@ class SymbolResolver {
                         )
                     )
                 }
-            } else {
-                // Match by file name (e.g. import "MPFile" or "dev.ajithgoveas.kindex.core.io.MPFile")
-                val baseName = importFqn.substringAfterLast('.').substringAfterLast('/')
-                val matchingFile = symbolIndex.values.find { 
-                    val fName = it.filePath.substringAfterLast('/').substringAfterLast('\\').substringBefore('.')
-                    fName.equals(baseName, ignoreCase = true)
-                }
-                if (matchingFile != null && matchingFile.filePath != filePath) {
-                    resolvedEdges.add(
-                        Edge(
-                            sourceId = filePath,
-                            targetId = matchingFile.filePath,
-                            relation = RelationType.IMPORTS
-                        )
-                    )
-                }
             }
+
+            // 1. Exact symbol id (class/enum/object fully-qualified name)
+            val exact = symbolIndex[importFqn]
+            if (exact != null) {
+                addResolvedEdge(exact)
+            } else if (importFqn.endsWith(".*")) {
+                // 2. Wildcard package import: match every symbol declared in that package
+                val pkgPrefix = importFqn.removeSuffix(".*")
+                val pkgMatches = symbolIndex.values.filter { it.packageName == pkgPrefix }
+                if (pkgMatches.isNotEmpty()) {
+                    for (sym in pkgMatches) addResolvedEdge(sym)
+                }
+            } else {
+                // 3. Top-level function import: "import pkg.name" is stored as symbol id "pkg#name"
+                val lastDot = importFqn.lastIndexOf('.')
+                val functionId = if (lastDot > 0) {
+                    importFqn.substring(0, lastDot) + "#" + importFqn.substring(lastDot + 1)
+                } else null
+                val functionMatch = functionId?.let { symbolIndex[it] }
+
+                // 4. Package + name match (handles multiple classes declared in one file)
+                val packageMatch = if (functionMatch == null && lastDot > 0) {
+                    val pkg = importFqn.substring(0, lastDot)
+                    val name = importFqn.substring(lastDot + 1)
+                    symbolIndex.values.find { it.packageName == pkg && it.name == name }
+                } else null
+
+                // 5. File-name fallback (e.g. import "MPFile" -> MPFile.kt)
+                val fileMatch = if (functionMatch == null && packageMatch == null) {
+                    val baseName = importFqn.substringAfterLast('.').substringAfterLast('/')
+                    symbolIndex.values.find {
+                        val fName = it.filePath.substringAfterLast('/').substringAfterLast('\\').substringBefore('.')
+                        fName.equals(baseName, ignoreCase = true)
+                    }
+                } else null
+
+                val sym = functionMatch ?: packageMatch ?: fileMatch
+                if (sym != null) addResolvedEdge(sym)
+            }
+
+            if (!matched) unresolvedImports.add(importFqn)
         }
 
-        return resolvedEdges
+        return ImportResolution(resolvedEdges, unresolvedImports)
     }
 
     /**

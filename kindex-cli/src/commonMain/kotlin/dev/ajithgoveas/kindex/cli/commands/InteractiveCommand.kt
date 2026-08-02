@@ -3,8 +3,10 @@ package dev.ajithgoveas.kindex.cli.commands
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.option
+import dev.ajithgoveas.kindex.cli.walkFiles
 import dev.ajithgoveas.kindex.core.analysis.ArchitectureFlowAnalyzer
 import dev.ajithgoveas.kindex.core.analysis.ArchitecturalLayer
+import dev.ajithgoveas.kindex.core.analysis.ModuleGraphAnalyzer
 import dev.ajithgoveas.kindex.core.io.KeyEvent
 import dev.ajithgoveas.kindex.core.io.MPFile
 import dev.ajithgoveas.kindex.core.io.RepositoryGuardrail
@@ -57,12 +59,13 @@ private const val CONT_COL = MENU_W + 3
 private data class MenuItem(val num: String, val label: String, val desc: String)
 
 private val MENU_ITEMS = listOf(
-    MenuItem("1", "Search",    "Fuzzy symbol search"),
-    MenuItem("2", "Deps",      "Call graph & references"),
-    MenuItem("3", "Stats",     "Repository metrics"),
-    MenuItem("4", "Flow",      "Architectural layers"),
-    MenuItem("5", "Export",    "Export diagram (Submenu)"),
-    MenuItem("6", "Dead Code", "Unreferenced symbols"),
+    MenuItem("1", "Scan",     "Re-index repository"),
+    MenuItem("2", "Search",   "Fuzzy symbol search"),
+    MenuItem("3", "Deps",     "Call graph & references"),
+    MenuItem("4", "Stats",    "Repository metrics"),
+    MenuItem("5", "Flow",     "Architectural layers"),
+    MenuItem("6", "Export",   "Export diagram (Submenu)"),
+    MenuItem("7", "Dead Code","Unreferenced symbols"),
 )
 
 private enum class TuiScreen { Menu, Input, ExportSubMenu, Content }
@@ -124,7 +127,7 @@ class InteractiveCommand : CliktCommand(
                     KeyEvent.Up    -> sel = (sel - 1 + MENU_ITEMS.size) % MENU_ITEMS.size
                     KeyEvent.Down  -> sel = (sel + 1) % MENU_ITEMS.size
                     KeyEvent.Enter -> {
-                        if (sel == 4) {
+                        if (sel == 5) {
                             mode = TuiScreen.ExportSubMenu
                             exportSel = 0
                         } else {
@@ -143,7 +146,7 @@ class InteractiveCommand : CliktCommand(
                         val n = k.c.digitToIntOrNull()
                         if (n != null && n in 1..MENU_ITEMS.size) {
                             sel = n - 1
-                            if (sel == 4) {
+                            if (sel == 5) {
                                 mode = TuiScreen.ExportSubMenu
                                 exportSel = 0
                             } else {
@@ -206,13 +209,14 @@ class InteractiveCommand : CliktCommand(
         }
     }
 
-    private fun activate(sel: Int)   = if (sel in listOf(0, 1)) TuiScreen.Input else TuiScreen.Content
-    private fun promptFor(sel: Int)  = if (sel == 0) "Search symbol" else "Symbol name"
-    private fun callbackFor(sel: Int) = if (sel == 0) ::doSearch else ::doDeps
+    private fun activate(sel: Int)   = if (sel in listOf(1, 2)) TuiScreen.Input else TuiScreen.Content
+    private fun promptFor(sel: Int)  = if (sel == 1) "Search symbol" else "Symbol name"
+    private fun callbackFor(sel: Int) = if (sel == 1) ::doSearch else ::doDeps
     private fun dataFor(sel: Int) = when (sel) {
-        2    -> doStats()
-        3    -> doFlow()
-        5    -> doDeadCode()
+        0    -> doScan()
+        3    -> doStats()
+        4    -> doFlow()
+        6    -> doDeadCode()
         else -> emptyList()
     }
 
@@ -384,6 +388,124 @@ class InteractiveCommand : CliktCommand(
         }
     }
 
+    private fun doScan(): List<String> {
+        return try {
+            val dbFile = MPFile("${rootDir.path}/.kindex/index.db")
+            val extractors = listOf(
+                dev.ajithgoveas.kindex.parser.extractors.KotlinJavaExtractor(),
+                dev.ajithgoveas.kindex.parser.extractors.RustExtractor(),
+                dev.ajithgoveas.kindex.parser.extractors.CExtractor(),
+                dev.ajithgoveas.kindex.parser.extractors.CppExtractor(),
+                dev.ajithgoveas.kindex.parser.extractors.CSharpExtractor(),
+                dev.ajithgoveas.kindex.parser.extractors.JavaScriptExtractor(),
+                dev.ajithgoveas.kindex.parser.extractors.GoExtractor(),
+                dev.ajithgoveas.kindex.parser.extractors.CssExtractor()
+            )
+            val walkedFiles = walkFiles(rootDir).filter { file -> extractors.any { it.supports(file) } }
+            val existingFiles = storage.getFilesMetadata()
+
+            val filesToScan = mutableListOf<MPFile>()
+            val unchangedCount = mutableListOf<String>()
+
+            for (file in walkedFiles) {
+                val dbMeta = existingFiles[file.path]
+                if (dbMeta != null) {
+                    val (dbTime, dbHash) = dbMeta
+                    val currentHash = dev.ajithgoveas.kindex.core.io.HashUtils.sha256(file)
+                    if (file.lastModified() == dbTime && currentHash == dbHash) {
+                        unchangedCount.add(file.path); continue
+                    }
+                }
+                filesToScan.add(file)
+            }
+
+            val walkedPathsSet = walkedFiles.map { it.path }.toSet()
+            val deletedPaths = existingFiles.keys.filter { it !in walkedPathsSet }
+
+            val parseResults = mutableListOf<dev.ajithgoveas.kindex.core.model.ParseResult>()
+            for (file in filesToScan) {
+                try {
+                    val ext = extractors.first { it.supports(file) }
+                    parseResults.add(ext.extract(file))
+                } catch (_: Throwable) {}
+            }
+
+            val dbSymbols = storage.getAllSymbols()
+            val modifiedPathsSet = filesToScan.map { it.path }.toSet()
+            val unmodifiedSymbols = dbSymbols.filter { it.filePath !in modifiedPathsSet && it.filePath !in deletedPaths }
+            val newSymbols = parseResults.flatMap { it.symbols }
+            val allSymbolsMap = (unmodifiedSymbols + newSymbols).associateBy { it.id }
+
+            val resolver = dev.ajithgoveas.kindex.parser.SymbolResolver()
+            val fullyResolvedResults = parseResults.map { result ->
+                val rawImportStrings = result.edges
+                    .filter { it.relation == RelationType.IMPORTS }
+                    .map { it.targetId }
+
+                val importResolution = resolver.resolveImportsDetailed(result.sourceFile.path, rawImportStrings, allSymbolsMap)
+                val resolvedImportEdges = importResolution.resolved
+                val externalEdges = importResolution.unresolved.map {
+                    dev.ajithgoveas.kindex.core.model.Edge(result.sourceFile.path, it, RelationType.IMPORTS)
+                }
+
+                val staticEdges = result.edges.filter {
+                    it.relation == RelationType.CONTAINS || it.relation == RelationType.EXTENDS
+                }
+
+                val unresolvedCalls = result.edges
+                    .filter { it.relation == RelationType.CALLS && it.targetId.startsWith("REF:") }
+
+                val resolvedCallEdges = unresolvedCalls.flatMap { callEdge ->
+                    resolver.resolveCalls(
+                        sourceId = callEdge.sourceId,
+                        unresolvedCalls = listOf(callEdge.targetId),
+                        imports = rawImportStrings,
+                        currentPackage = result.sourceFile.packageName,
+                        symbolIndex = allSymbolsMap
+                    )
+                }
+
+                result.copy(edges = staticEdges + resolvedImportEdges + resolvedCallEdges + externalEdges)
+            }
+
+            storage.saveResultsIncremental(fullyResolvedResults, deletedPaths)
+            val s = storage.getRepositoryStats()
+
+            val graphsWritten = try {
+                val syms = storage.getAllSymbols()
+                if (syms.isNotEmpty()) {
+                    val allEdges = storage.getAllEdges()
+                    val base = dbFile.path.removeSuffix("index.db") + "graph"
+                    MPFile("$base.mmd").writeText(ModuleGraphAnalyzer.renderMermaid(syms, allEdges))
+                    MPFile("$base.dot").writeText(ModuleGraphAnalyzer.renderDot(syms, allEdges))
+                    MPFile("$base.json").writeText(ModuleGraphAnalyzer.renderJson(syms, allEdges))
+                    true
+                } else false
+            } catch (_: Exception) {
+                false
+            }
+
+            listOf(
+                "",
+                "  $C_SUCCESS$BOLD✓ Interactive scan complete$RESET",
+                "",
+                "  $C_MUTED Total Candidate Files $RESET $BOLD$C_CYAN${walkedFiles.size}$RESET",
+                "  $C_MUTED Modified / New Files  $RESET $BOLD$C_CYAN${filesToScan.size}$RESET",
+                "  $C_MUTED Unchanged Files       $RESET $BOLD$C_CYAN${unchangedCount.size}$RESET",
+                "  $C_MUTED Pruned Files          $RESET $BOLD$C_CYAN${deletedPaths.size}$RESET",
+                "",
+                "  $C_MUTED Indexed Symbols       $RESET $BOLD$C_CYAN${s.symbolCount}$RESET",
+                "  $C_MUTED Indexed Edges         $RESET $BOLD$C_CYAN${s.edgeCount}$RESET",
+                if (graphsWritten) "  $C_MUTED Architecture graphs    $RESET $C_SUCCESS✓${RESET}${C_MUTED}.kindex/graph.{mmd,dot,json}$RESET" else "",
+                "",
+                "  $C_MUTED Database updated at:$RESET",
+                "  $C_BRIGHT  ${dbFile.absolutePath}$RESET"
+            )
+        } catch (e: Exception) {
+            listOf("", "  $C_RED Error during repository scan: ${e.message}$RESET")
+        }
+    }
+
     private fun doSearch(query: String): List<String> {
         if (query.isBlank()) return listOf("  $C_MUTED No query entered.$RESET")
         return try {
@@ -459,7 +581,6 @@ class InteractiveCommand : CliktCommand(
             val symbols = storage.getAllSymbols()
             val edges   = storage.getAllEdges()
             val nodes   = ArchitectureFlowAnalyzer.classifyNodes(symbols, edges)
-            val byLayer = nodes.groupBy { it.layer }
             val fileEdges = ArchitectureFlowAnalyzer.aggregateByFile(edges.filter { it.relation != RelationType.CONTAINS })
 
             val ext = when (format.lowercase()) {
@@ -469,70 +590,9 @@ class InteractiveCommand : CliktCommand(
             }
             val path = "${rootDir.path}/.kindex/graph.$ext"
             val content = when (ext) {
-                "dot" -> {
-                    buildString {
-                        appendLine("digraph KIndexFlowGraph {")
-                        appendLine("    rankdir=TB; compound=true;")
-                        appendLine("    node [shape=box, style=\"filled,rounded\", fontname=\"Helvetica\", color=\"#495057\", fillcolor=\"#F8F9FA\"];")
-                        appendLine("    edge [fontname=\"Helvetica\", fontsize=9, color=\"#6C757D\"];")
-                        byLayer.forEach { (layer, layerNodes) ->
-                            if (layerNodes.isEmpty()) return@forEach
-                            appendLine("    subgraph cluster_${layer.name.lowercase()} {")
-                            appendLine("        label=\"${layer.displayName}\";")
-                            val fileNames = layerNodes.map { cleanDisplayName(it.id) }.distinct()
-                            fileNames.take(12).forEach { f ->
-                                val safeId = toMermaidSafeId(f)
-                                appendLine("        \"$safeId\" [label=\"$f\"];")
-                            }
-                            appendLine("    }")
-                        }
-                        val seen = mutableSetOf<String>()
-                        fileEdges.take(50).forEach { e ->
-                            val srcName = cleanDisplayName(e.source)
-                            val tgtName = cleanDisplayName(e.target)
-                            val src = toMermaidSafeId(srcName)
-                            val tgt = toMermaidSafeId(tgtName)
-                            if (src != tgt) {
-                                val line = "    \"$src\" -> \"$tgt\" [label=\"${e.relation}\"];"
-                                if (seen.add(line)) appendLine(line)
-                            }
-                        }
-                        appendLine("}")
-                    }
-                }
-                "json" -> {
-                    val jsonNodes = nodes.map { """    { "id": "${it.id}", "name": "${it.name}", "layer": "${it.layer.name}" }""" }
-                    val jsonLinks = edges.filter { it.relation != RelationType.CONTAINS }.take(100).map {
-                        """    { "source": "${it.sourceId}", "target": "${it.targetId}", "relation": "${it.relation.name}" }"""
-                    }
-                    "{\n  \"nodes\": [\n${jsonNodes.joinToString(",\n")}\n  ],\n  \"links\": [\n${jsonLinks.joinToString(",\n")}\n  ]\n}"
-                }
-                else -> {
-                    buildString {
-                        appendLine("graph TD")
-                        byLayer.forEach { (layer, layerNodes) ->
-                            if (layerNodes.isEmpty()) return@forEach
-                            appendLine("    subgraph ${layer.name.lowercase()} [\"${layer.displayName}\"]")
-                            val files = layerNodes.map { cleanDisplayName(it.id) }.distinct()
-                            files.take(12).forEach { f ->
-                                val safeId = toMermaidSafeId(f)
-                                appendLine("        $safeId[\"$f\"]")
-                            }
-                            appendLine("    end")
-                        }
-                        val seen = mutableSetOf<String>()
-                        fileEdges.take(50).forEach { e ->
-                            val srcName = cleanDisplayName(e.source)
-                            val tgtName = cleanDisplayName(e.target)
-                            val src = toMermaidSafeId(srcName)
-                            val tgt = toMermaidSafeId(tgtName)
-                            if (src != tgt) {
-                                val line = "    $src -->|${e.relation}| $tgt"
-                                if (seen.add(line)) appendLine(line)
-                            }
-                        }
-                    }
-                }
+                "dot" -> ModuleGraphAnalyzer.renderDot(symbols, edges)
+                "json" -> ModuleGraphAnalyzer.renderJson(symbols, edges)
+                else -> ModuleGraphAnalyzer.renderMermaid(symbols, edges)
             }
 
             MPFile(path).writeText(content)
@@ -546,24 +606,6 @@ class InteractiveCommand : CliktCommand(
                 "  $C_MUTED Nodes: $RESET$BOLD$C_CYAN${nodes.size}$RESET  $C_MUTED Edges: $RESET$BOLD$C_CYAN${fileEdges.size}$RESET"
             )
         } catch (e: Exception) { listOf("  $C_RED Error: ${e.message}$RESET") }
-    }
-
-    private fun cleanDisplayName(raw: String): String {
-        val path = raw.substringBefore("#")
-        val fileName = path.substringAfterLast("/").substringAfterLast("\\")
-        if (fileName.endsWith(".kt") || fileName.endsWith(".java") || fileName.endsWith(".rs") || 
-            fileName.endsWith(".ts") || fileName.endsWith(".js") || fileName.endsWith(".go") || 
-            fileName.endsWith(".c") || fileName.endsWith(".cpp") || fileName.endsWith(".cs")) {
-            return fileName
-        }
-        val shortSymbol = if (fileName.contains(".")) fileName.substringAfterLast(".") else fileName
-        return if (shortSymbol.isBlank()) "Main.kt" else "$shortSymbol.kt"
-    }
-
-    private fun toMermaidSafeId(rawName: String): String {
-        val clean = rawName.replace(Regex("[^a-zA-Z0-9_]"), "_")
-        val reservedKeywords = setOf("graph", "subgraph", "end", "style", "class", "classdef", "click", "direction")
-        return if (clean.lowercase() in reservedKeywords || clean.isEmpty()) "node_$clean" else clean
     }
 
     private fun doDeadCode(): List<String> {

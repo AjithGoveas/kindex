@@ -10,7 +10,7 @@ import com.github.ajalt.mordant.rendering.TextColors.red
 import com.github.ajalt.mordant.rendering.TextColors.yellow
 import com.github.ajalt.mordant.terminal.Terminal
 import dev.ajithgoveas.kindex.core.analysis.ArchitectureFlowAnalyzer
-import dev.ajithgoveas.kindex.core.analysis.ArchitecturalLayer
+import dev.ajithgoveas.kindex.core.analysis.ModuleGraphAnalyzer
 import dev.ajithgoveas.kindex.core.model.Edge
 import dev.ajithgoveas.kindex.core.model.RelationType
 import dev.ajithgoveas.kindex.core.model.Symbol
@@ -97,10 +97,9 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
         val targetOutputFile = outputOpt ?: defaultFile
 
         val content = when (granularity.lowercase()) {
-            "file" -> exportFileLevel(rawEdges, targetFormat)
             "package", "module" -> exportPackageLevel(rawSymbols, rawEdges, targetFormat)
             "symbol" -> exportSymbolLevel(rawSymbols, rawEdges, targetFormat)
-            else -> exportHierarchicalFlow(rawSymbols, rawEdges, targetFormat)
+            else -> exportFileLevel(rawSymbols, rawEdges, targetFormat)
         }
 
         try {
@@ -113,134 +112,10 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
         }
     }
 
-    private fun exportHierarchicalFlow(symbols: List<Symbol>, edges: List<Edge>, format: String): String {
-        val flowEdges = edges.filter { it.relation != RelationType.CONTAINS }
-        val classifiedNodes = ArchitectureFlowAnalyzer.classifyNodes(symbols, flowEdges)
-        val fileEdges = ArchitectureFlowAnalyzer.aggregateByFile(flowEdges)
-
-        return when (format) {
-            "dot", "graphviz" -> {
-                val sb = StringBuilder("digraph KIndexFlowGraph {\n")
-                sb.append("    rankdir=TB;\n")
-                sb.append("    compound=true;\n")
-                sb.append("    node [shape=box, style=\"filled,rounded\", fontname=\"Helvetica\", color=\"#495057\", fillcolor=\"#F8F9FA\"];\n")
-                sb.append("    edge [fontname=\"Helvetica\", fontsize=9, color=\"#6C757D\"];\n\n")
-
-                val connectedFiles = fileEdges.flatMap { listOf(cleanDisplayName(it.source), cleanDisplayName(it.target)) }.toSet()
-                val layerGroups = classifiedNodes.groupBy { it.layer }
-
-                for (layer in ArchitecturalLayer.entries) {
-                    val nodes = layerGroups[layer] ?: continue
-                    val fileNames = nodes.map { cleanDisplayName(it.id) }.distinct().filter { it in connectedFiles || connectedFiles.isEmpty() }
-                    if (fileNames.isEmpty()) continue
-
-                    sb.append("    subgraph cluster_${layer.name} {\n")
-                    sb.append("        label=\"${layer.emoji} ${layer.displayName}\";\n")
-                    sb.append("        style=dashed; color=\"#6C757D\";\n")
-                    for (f in fileNames) {
-                        val safeId = toMermaidSafeId(f)
-                        sb.append("        \"$safeId\" [label=\"$f\"];\n")
-                    }
-                    sb.append("    }\n\n")
-                }
-
-                val seenEdges = mutableSetOf<String>()
-                for (e in fileEdges) {
-                    val srcName = cleanDisplayName(e.source)
-                    val tgtName = cleanDisplayName(e.target)
-                    val src = toMermaidSafeId(srcName)
-                    val tgt = toMermaidSafeId(tgtName)
-                    if (src != tgt) {
-                        val line = "    \"$src\" -> \"$tgt\" [label=\"${e.relation}\"];\n"
-                        if (seenEdges.add(line)) sb.append(line)
-                    }
-                }
-                sb.append("}\n").toString()
-            }
-            "json" -> exportJsonNodesAndEdges(classifiedNodes, fileEdges)
-            else -> {
-                val sb = StringBuilder("graph TD\n")
-                sb.append("    classDef entry fill:#457b9d,color:#fff,stroke:#1d3557,stroke-width:2px;\n")
-                sb.append("    classDef service fill:#2a9d8f,color:#fff,stroke:#264653,stroke-width:2px;\n")
-                sb.append("    classDef storage fill:#e76f51,color:#fff,stroke:#b7094c,stroke-width:2px;\n")
-                sb.append("    classDef solo fill:#e9ecef,color:#212529,stroke:#ced4da,stroke-width:1px,stroke-dasharray: 5 5;\n\n")
-
-                val connectedFiles = fileEdges.flatMap { listOf(cleanDisplayName(it.source), cleanDisplayName(it.target)) }.toSet()
-                val layerGroups = classifiedNodes.groupBy { it.layer }
-
-                for (layer in ArchitecturalLayer.entries) {
-                    val nodes = layerGroups[layer] ?: continue
-                    val fileNames = nodes.map { cleanDisplayName(it.id) }.distinct().filter { it in connectedFiles || connectedFiles.isEmpty() }
-                    if (fileNames.isEmpty()) continue
-
-                    val layerTitle = "${layer.emoji} ${layer.displayName}"
-                    sb.append("    subgraph ${layer.name}[\"$layerTitle\"]\n")
-                    val styleClass = when(layer) {
-                        ArchitecturalLayer.ENTRY_POINTS -> "entry"
-                        ArchitecturalLayer.SERVICES -> "service"
-                        ArchitecturalLayer.STORAGE -> "storage"
-                        ArchitecturalLayer.UTILITIES -> "solo"
-                    }
-                    for (f in fileNames) {
-                        val safeId = toMermaidSafeId(f)
-                        sb.append("        $safeId[\"$f\"]:::$styleClass\n")
-                    }
-                    sb.append("    end\n\n")
-                }
-
-                val seenEdges = mutableSetOf<String>()
-                for (e in fileEdges) {
-                    val srcName = cleanDisplayName(e.source)
-                    val tgtName = cleanDisplayName(e.target)
-                    val src = toMermaidSafeId(srcName)
-                    val tgt = toMermaidSafeId(tgtName)
-                    if (src != tgt) {
-                        val line = "    $src -->|${e.relation}| $tgt\n"
-                        if (seenEdges.add(line)) sb.append(line)
-                    }
-                }
-                sb.toString()
-            }
-        }
-    }
-
-    private fun exportFileLevel(edges: List<Edge>, format: String): String {
-        val fileEdges = ArchitectureFlowAnalyzer.aggregateByFile(edges)
-        return when (format) {
-            "dot", "graphviz" -> {
-                val sb = StringBuilder("digraph FileWiringGraph {\n    rankdir=LR;\n    node [shape=box, style=\"filled,rounded\", fillcolor=\"#E9ECEF\", fontname=\"Helvetica\"];\n")
-                val seen = mutableSetOf<String>()
-                for (e in fileEdges.take(50)) {
-                    val src = cleanDisplayName(e.source)
-                    val tgt = cleanDisplayName(e.target)
-                    val line = "    \"$src\" -> \"$tgt\" [label=\"${e.relation} (${e.weight})\"];\n"
-                    if (seen.add(line)) sb.append(line)
-                }
-                sb.append("}\n").toString()
-            }
-            "json" -> {
-                val nodes = fileEdges.flatMap { listOf(cleanDisplayName(it.source), cleanDisplayName(it.target)) }.distinct().map {
-                    """    { "id": "$it", "type": "FILE" }"""
-                }
-                val links = fileEdges.map {
-                    """    { "source": "${cleanDisplayName(it.source)}", "target": "${cleanDisplayName(it.target)}", "relation": "${it.relation}", "weight": ${it.weight} }"""
-                }
-                "{\n  \"nodes\": [\n${nodes.joinToString(",\n")}\n  ],\n  \"links\": [\n${links.joinToString(",\n")}\n  ]\n}"
-            }
-            else -> {
-                val sb = StringBuilder("graph LR\n")
-                val seen = mutableSetOf<String>()
-                for (e in fileEdges.take(50)) {
-                    val srcName = cleanDisplayName(e.source)
-                    val tgtName = cleanDisplayName(e.target)
-                    val src = toMermaidSafeId(srcName)
-                    val tgt = toMermaidSafeId(tgtName)
-                    val line = "    $src[\"$srcName\"] -->|${e.relation} ${e.weight}x| $tgt[\"$tgtName\"]\n"
-                    if (seen.add(line)) sb.append(line)
-                }
-                sb.toString()
-            }
-        }
+    private fun exportFileLevel(symbols: List<Symbol>, edges: List<Edge>, format: String): String = when (format) {
+        "dot", "graphviz" -> ModuleGraphAnalyzer.renderDot(symbols, edges)
+        "json" -> ModuleGraphAnalyzer.renderJson(symbols, edges)
+        else -> ModuleGraphAnalyzer.renderMermaid(symbols, edges)
     }
 
     private fun exportPackageLevel(symbols: List<Symbol>, edges: List<Edge>, format: String): String {
@@ -318,15 +193,9 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
     }
 
     private fun cleanDisplayName(raw: String): String {
-        val path = raw.substringBefore("#")
-        val fileName = path.substringAfterLast("/").substringAfterLast("\\")
-        if (fileName.endsWith(".kt") || fileName.endsWith(".java") || fileName.endsWith(".rs") || 
-            fileName.endsWith(".ts") || fileName.endsWith(".js") || fileName.endsWith(".go") || 
-            fileName.endsWith(".c") || fileName.endsWith(".cpp") || fileName.endsWith(".cs")) {
-            return fileName
-        }
-        val shortSymbol = if (fileName.contains(".")) fileName.substringAfterLast(".") else fileName
-        return if (shortSymbol.isBlank()) "Main.kt" else "$shortSymbol.kt"
+        val path = raw.substringBefore("#").replace('\\', '/')
+        val fileName = path.substringAfterLast("/")
+        return if (fileName.contains(".")) fileName else "$fileName.kt"
     }
 
     private fun toMermaidSafeId(rawName: String): String {
@@ -335,16 +204,4 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
         return if (clean.lowercase() in reservedKeywords || clean.isEmpty()) "node_$clean" else clean
     }
 
-    private fun exportJsonNodesAndEdges(
-        nodes: List<dev.ajithgoveas.kindex.core.analysis.ComponentNode>,
-        fileEdges: List<dev.ajithgoveas.kindex.core.analysis.AggregatedEdge>
-    ): String {
-        val nodesJson = nodes.map {
-            """    { "id": "${cleanDisplayName(it.id)}", "name": "${it.name}", "layer": "${it.layer.name}", "type": "${it.symbolType}" }"""
-        }
-        val linksJson = fileEdges.map {
-            """    { "source": "${cleanDisplayName(it.source)}", "target": "${cleanDisplayName(it.target)}", "relation": "${it.relation}", "weight": ${it.weight} }"""
-        }
-        return "{\n  \"nodes\": [\n${nodesJson.joinToString(",\n")}\n  ],\n  \"links\": [\n${linksJson.joinToString(",\n")}\n  ]\n}"
-    }
 }
