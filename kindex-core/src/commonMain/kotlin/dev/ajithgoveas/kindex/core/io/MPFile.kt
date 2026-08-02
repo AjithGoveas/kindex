@@ -27,7 +27,12 @@ class MPFile(val path: String) {
         get() = FileSystem.SYSTEM.metadataOrNull(okioPath)?.isDirectory == true
 
     val parentFile: MPFile?
-        get() = okioPath.parent?.let { MPFile(it.toString()) }
+        get() = try {
+            val canonical = FileSystem.SYSTEM.canonicalize(okioPath)
+            canonical.parent?.let { MPFile(it.toString()) }
+        } catch (e: Exception) {
+            okioPath.parent?.let { MPFile(it.toString()) }
+        }
 
     fun readText(): String {
         return FileSystem.SYSTEM.read(okioPath) { readUtf8() }
