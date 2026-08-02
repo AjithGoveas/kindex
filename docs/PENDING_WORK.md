@@ -74,5 +74,37 @@ Automate index maintenance in the background via Git lifecycle hooks (`post-comm
 Establish baseline performance characteristics of KIndex against large-scale projects (e.g. Kotlin compiler, Spring Framework, Kubernetes).
 
 * **Key Deliverables:**
-  - [ ] Create a `kindex benchmark` task utilizing JMH or kotlinx-benchmark.
-  - [ ] Measure parse speeds (files/second), re-scan times, database file overhead, and peak memory footprints during scanning.
+  - [ ] Create a `kindex benchmark` command measuring parse speeds (files/second), re-scan times, database overhead, and memory footprint.
+  - [ ] Generate synthetic codebase benchmark generators (1k, 10k, 50k files).
+
+---
+
+### 🎨 Option 5: Multi-Format Graph Exporters (`kindex export`) [IN PROGRESS ⚙️]
+
+Export repository architectural graph into multiple industry-standard diagram and data formats.
+
+* **Key Deliverables:**
+  - [ ] **Mermaid TD (`mermaid`)**: Export node-and-edge relationships in Mermaid syntax.
+  - [ ] **Graphviz DOT (`dot`)**: Export Graphviz `digraph KIndexGraph { ... }` format for visualization in OmniGraffle, Graphviz, or Gephi.
+  - [ ] **JSON Graph Format (`json`)**: Export structured node metadata and edge relation links for web visualizers (D3.js, Cytoscape.js).
+
+---
+
+### 🚀 Option 6: Root Executable Launcher & Convenience Task (`./kindex` / `kindex.bat`)
+
+Provide immediate top-level launcher scripts in the repository root directory.
+
+* **Key Deliverables:**
+  - [ ] Root `./kindex` POSIX shell wrapper script.
+  - [ ] Root `kindex.bat` Windows batch wrapper script.
+  - [ ] Gradle `:installLauncher` task assembling and deploying executable wrappers automatically.
+
+---
+
+### 🖥️ Option 7: Interactive TUI Dashboard Enhancements
+
+Enhance the JLine arrow-key interactive terminal UI with live search filtering, dead code inspection, and detail modals.
+
+* **Key Deliverables:**
+  - [ ] Live fuzzy symbol filtering input box in TUI.
+  - [ ] Modal inspector rendering incoming/outgoing dependency edges for selected symbols.
