@@ -33,17 +33,27 @@ This document outlines upcoming architectural enhancements, optimizations, and f
 
 ---
 
-### 🦀 Option 1: Pure Kotlin/Native Target Compilation & Linking
+### 🔥 Option 1: Standalone Native Executable Compilation (`kindex.exe` / `kindex`) [HIGH PRIORITY 🔥]
 
-Enable zero-dependency standalone native binaries for Windows (`mingwX64`), macOS (`macosArm64`/`macosX64`), and Linux (`linuxX64`) by linking directly to the C library or invoking parser binaries.
+Enable zero-dependency standalone native binaries for Windows (`mingwX64` -> `kindex.exe`), macOS (`macosArm64`/`macosX64` -> `kindex`), and Linux (`linuxX64` -> `kindex`). Developers download a single binary, place it in their repo (or `.kindex/`), and run it directly with zero runtime/JVM prerequisites.
 
 * **Key Deliverables:**
-  - [ ] Configure Tree-sitter C header search paths (`api.h`) and static library links (`libtree-sitter.a`) in `treesitter.def`.
+  - [ ] Configure Tree-sitter C header search paths (`api.h`) and static library links (`libtree-sitter.a`) in `treesitter.def` for Kotlin/Native.
   - [ ] Replace native placeholder stubs in `TreeSitterNative.kt` with actual C API wrappers.
-  - [ ] **Direct Binary Invocation Alternative:** Explore bundling the official `tree-sitter` CLI or specialized parser binary executables (similar to invoking `git` or system shell commands) to perform out-of-process AST generation, bypassing C-linking overhead.
-  - [ ] **Direct Root Invocation Script/Shortcut:** Implement Gradle assembly configurations (or post-build symlinks/batch scripts) that place the compiled executable directly in the root directory as `./kindex` (or `kindex.bat`), eliminating the need to invoke the nested build distribution folder.
   - [ ] Integrate Touchlab's SQLiter SQLite driver backend in `DatabaseDriverFactoryNative.kt` for native targets.
-  - [ ] Configure GitHub Actions workflows to cross-compile host-native binaries.
+  - [ ] Support native compilation tasks (`./gradlew :kindex-cli:nativeExecutable`) outputting `kindex.exe` / `kindex`.
+
+---
+
+### 🔥 Option 8: GitHub Actions Automated CI/CD Release Pipeline (`.github/workflows/release.yml`) [HIGH PRIORITY 🔥]
+
+Automate multi-platform cross-compilation and release asset publishing on GitHub Releases.
+
+* **Key Deliverables:**
+  - [ ] Create `.github/workflows/release.yml` triggered on version tag pushes (`v*`).
+  - [ ] Matrix build job across OS targets (`windows-latest`, `ubuntu-latest`, `macos-latest`).
+  - [ ] Automatically package standalone binaries (`kindex.exe`, `kindex-linux-x64`, `kindex-macos-arm64`).
+  - [ ] Automatically attach release assets to GitHub Release notes with SHA-256 checksums.
 
 ---
 
