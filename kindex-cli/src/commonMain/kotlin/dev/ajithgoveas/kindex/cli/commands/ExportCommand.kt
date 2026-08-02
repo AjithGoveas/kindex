@@ -96,7 +96,6 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
     }
 
     private fun exportHierarchicalFlow(symbols: List<Symbol>, edges: List<Edge>, format: String): String {
-        // Filter edges to calls, imports, extends for a clean architectural flow
         val flowEdges = edges.filter { it.relation != RelationType.CONTAINS }
         val classifiedNodes = ArchitectureFlowAnalyzer.classifyNodes(symbols, flowEdges)
         val fileEdges = ArchitectureFlowAnalyzer.aggregateByFile(flowEdges)
@@ -117,7 +116,7 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
                     sb.append("        style=dashed; color=\"#6C757D\";\n")
                     val fileNames = nodes.map { cleanDisplayName(it.id) }.distinct()
                     for (f in fileNames.take(8)) {
-                        val safeId = f.replace(Regex("[^a-zA-Z0-9_]"), "_")
+                        val safeId = toMermaidSafeId(f)
                         sb.append("        \"$safeId\" [label=\"$f\"];\n")
                     }
                     sb.append("    }\n\n")
@@ -125,8 +124,8 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
 
                 val seenEdges = mutableSetOf<String>()
                 for (e in fileEdges.take(40)) {
-                    val src = cleanDisplayName(e.source).replace(Regex("[^a-zA-Z0-9_]"), "_")
-                    val tgt = cleanDisplayName(e.target).replace(Regex("[^a-zA-Z0-9_]"), "_")
+                    val src = toMermaidSafeId(cleanDisplayName(e.source))
+                    val tgt = toMermaidSafeId(cleanDisplayName(e.target))
                     if (src != tgt) {
                         val line = "    \"$src\" -> \"$tgt\" [label=\"${e.relation}\"];\n"
                         if (seenEdges.add(line)) sb.append(line)
@@ -136,7 +135,7 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
             }
             "json" -> exportJsonNodesAndEdges(classifiedNodes, fileEdges)
             else -> {
-                // Crisp, uncluttered Mermaid TD graph
+                // Crisp, uncluttered Mermaid TD graph with keyword collision prevention
                 val sb = StringBuilder("graph TD\n")
                 sb.append("    classDef entry fill:#457b9d,color:#fff,stroke:#1d3557,stroke-width:2px;\n")
                 sb.append("    classDef service fill:#2a9d8f,color:#fff,stroke:#264653,stroke-width:2px;\n")
@@ -156,7 +155,7 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
                         ArchitecturalLayer.UTILITIES -> "solo"
                     }
                     for (f in files.take(8)) {
-                        val safeId = f.replace(Regex("[^a-zA-Z0-9_]"), "_")
+                        val safeId = toMermaidSafeId(f)
                         sb.append("        $safeId[\"$f\"]:::$styleClass\n")
                     }
                     sb.append("    end\n\n")
@@ -164,8 +163,8 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
 
                 val seenEdges = mutableSetOf<String>()
                 for (e in fileEdges.take(40)) {
-                    val src = cleanDisplayName(e.source).replace(Regex("[^a-zA-Z0-9_]"), "_")
-                    val tgt = cleanDisplayName(e.target).replace(Regex("[^a-zA-Z0-9_]"), "_")
+                    val src = toMermaidSafeId(cleanDisplayName(e.source))
+                    val tgt = toMermaidSafeId(cleanDisplayName(e.target))
                     if (src != tgt) {
                         val line = "    $src -->|${e.relation}| $tgt\n"
                         if (seenEdges.add(line)) sb.append(line)
@@ -205,8 +204,8 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
                 for (e in fileEdges.take(50)) {
                     val srcName = cleanDisplayName(e.source)
                     val tgtName = cleanDisplayName(e.target)
-                    val src = srcName.replace(Regex("[^a-zA-Z0-9_]"), "_")
-                    val tgt = tgtName.replace(Regex("[^a-zA-Z0-9_]"), "_")
+                    val src = toMermaidSafeId(srcName)
+                    val tgt = toMermaidSafeId(tgtName)
                     val line = "    $src[\"$srcName\"] -->|${e.relation} ${e.weight}x| $tgt[\"$tgtName\"]\n"
                     if (seen.add(line)) sb.append(line)
                 }
@@ -240,8 +239,8 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
                 val sb = StringBuilder("graph LR\n")
                 val seen = mutableSetOf<String>()
                 for (e in pkgEdges) {
-                    val src = e.source.replace(Regex("[^a-zA-Z0-9_]"), "_")
-                    val tgt = e.target.replace(Regex("[^a-zA-Z0-9_]"), "_")
+                    val src = toMermaidSafeId(e.source)
+                    val tgt = toMermaidSafeId(e.target)
                     val line = "    $src[\"${e.source}\"] -->|${e.relation} ${e.weight}x| $tgt[\"${e.target}\"]\n"
                     if (seen.add(line)) sb.append(line)
                 }
@@ -279,8 +278,8 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
                 for (e in cleanEdges.take(60)) {
                     val rawSrc = cleanDisplayName(e.sourceId)
                     val rawTgt = cleanDisplayName(e.targetId)
-                    val src = rawSrc.replace(Regex("[^a-zA-Z0-9_]"), "_")
-                    val tgt = rawTgt.replace(Regex("[^a-zA-Z0-9_]"), "_")
+                    val src = toMermaidSafeId(rawSrc)
+                    val tgt = toMermaidSafeId(rawTgt)
                     val line = "    $src[\"$rawSrc\"] -->|${e.relation.name}| $tgt[\"$rawTgt\"]\n"
                     if (seen.add(line)) sb.append(line)
                 }
@@ -292,7 +291,14 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
     private fun cleanDisplayName(raw: String): String {
         val path = raw.substringBefore("#")
         val shortName = path.substringAfterLast("/").substringAfterLast("\\")
-        return if (shortName.contains(".")) shortName.substringAfterLast(".") else shortName
+        val result = if (shortName.contains(".")) shortName.substringAfterLast(".") else shortName
+        return if (result.isBlank()) "Root" else result
+    }
+
+    private fun toMermaidSafeId(rawName: String): String {
+        val clean = rawName.replace(Regex("[^a-zA-Z0-9_]"), "_")
+        val reservedKeywords = setOf("graph", "subgraph", "end", "style", "class", "classdef", "click", "direction")
+        return if (clean.lowercase() in reservedKeywords || clean.isEmpty()) "node_$clean" else clean
     }
 
     private fun exportJsonNodesAndEdges(

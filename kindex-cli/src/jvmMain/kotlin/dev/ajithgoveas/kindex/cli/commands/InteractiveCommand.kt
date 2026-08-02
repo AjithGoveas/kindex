@@ -13,6 +13,7 @@ import dev.ajithgoveas.kindex.storage.IndexStorage
 import dev.ajithgoveas.kindex.parser.extractors.*
 import dev.ajithgoveas.kindex.core.analysis.ArchitectureFlowAnalyzer
 import dev.ajithgoveas.kindex.core.analysis.ArchitecturalLayer
+import dev.ajithgoveas.kindex.core.model.RelationType
 import org.jline.terminal.TerminalBuilder
 import org.jline.keymap.BindingReader
 import org.jline.keymap.KeyMap
@@ -92,11 +93,11 @@ class InteractiveCommand : CliktCommand(
         val resolver = dev.ajithgoveas.kindex.parser.SymbolResolver()
         val fullyResolvedResults = parseResults.map { result ->
             val rawImportStrings = result.edges
-                .filter { it.relation == dev.ajithgoveas.kindex.core.model.RelationType.IMPORTS }
+                .filter { it.relation == RelationType.IMPORTS }
                 .map { it.targetId }
 
             val resolvedImportEdges = resolver.resolveImports(result.sourceFile.path, rawImportStrings, allSymbolsMap)
-            val containmentEdges = result.edges.filter { it.relation != dev.ajithgoveas.kindex.core.model.RelationType.IMPORTS }
+            val containmentEdges = result.edges.filter { it.relation != RelationType.IMPORTS }
 
             result.copy(edges = containmentEdges + resolvedImportEdges)
         }
@@ -139,12 +140,10 @@ class InteractiveCommand : CliktCommand(
         var selectedIndex = 0
 
         fun drawMenu() {
-            // Use JLine native clear screen to prevent duplication across different shell/cmd window environments
             jlineTerminal.puts(InfoCmp.Capability.clear_screen)
             jlineTerminal.flush()
 
             val writer = jlineTerminal.writer()
-            // Always display the branded name/logo on top of the menu options
             writer.println(magenta("""
   ██   ██ ██ ███    ██ ██████  ███████ ██   ██
   ██  ██  ██ ████   ██ ██   ██ ██       ██ ██ 
@@ -165,7 +164,6 @@ class InteractiveCommand : CliktCommand(
                 }
             }
 
-            // Divider and contextual help tip
             writer.println(dim("\n  ───────────────────────────────────────────────────────────"))
             writer.println("  " + yellow(helpTips[selectedIndex]) + "\n")
             writer.flush()
@@ -174,17 +172,14 @@ class InteractiveCommand : CliktCommand(
         while (true) {
             val keyMap = KeyMap<KeyAction>()
             
-            // Bind Native Terminal Capabilities
             val keyUpCap = jlineTerminal.getStringCapability(InfoCmp.Capability.key_up)
             if (keyUpCap != null) keyMap.bind(KeyAction.UP, keyUpCap)
             val keyDownCap = jlineTerminal.getStringCapability(InfoCmp.Capability.key_down)
             if (keyDownCap != null) keyMap.bind(KeyAction.DOWN, keyDownCap)
 
-            // Bind fallback escape codes
             keyMap.bind(KeyAction.UP, "\u001b[A", "\u001bOA")
             keyMap.bind(KeyAction.DOWN, "\u001b[B", "\u001bOB")
             
-            // Bind Keyboard Shortcuts
             keyMap.bind(KeyAction.UP, "w", "W", "k", "K")
             keyMap.bind(KeyAction.DOWN, "s", "S", "j", "J")
             
@@ -228,13 +223,12 @@ class InteractiveCommand : CliktCommand(
             }
 
             if (actionSelected) {
-                if (selectedIndex == 5) { // Quit option
+                if (selectedIndex == 5) {
                     break
                 }
-                // Temporarily close raw terminal to read standard stdin
                 jlineTerminal.close()
 
-                t.print("\u001b[H\u001b[2J") // Clear screen during action execution
+                t.print("\u001b[H\u001b[2J")
                 try {
                     when (selectedIndex) {
                         0 -> {
@@ -333,8 +327,8 @@ class InteractiveCommand : CliktCommand(
                             t.println(dim("───────────────────────────────────────────────────────────\n"))
                             val symbols = storage.getAllSymbols()
                             val edges = storage.getAllEdges()
-                            val importTargets = edges.filter { it.relation == dev.ajithgoveas.kindex.core.model.RelationType.IMPORTS }.map { it.targetId }.toSet()
-                            val containmentParents = edges.filter { it.relation == dev.ajithgoveas.kindex.core.model.RelationType.CONTAINS }.associateBy({ it.targetId }, { it.sourceId })
+                            val importTargets = edges.filter { it.relation == RelationType.IMPORTS }.map { it.targetId }.toSet()
+                            val containmentParents = edges.filter { it.relation == RelationType.CONTAINS }.associateBy({ it.targetId }, { it.sourceId })
                             val mainFunctions = symbols.filter { it.type == dev.ajithgoveas.kindex.core.model.SymbolType.FUNCTION && it.name.equals("main", ignoreCase = true) }
                             val entryPointContainers = mainFunctions.mapNotNull { containmentParents[it.id] }.toSet()
 
@@ -400,7 +394,6 @@ class InteractiveCommand : CliktCommand(
                 t.print(dim("\nPress Enter to return to menu..."))
                 readlnOrNull()
 
-                // Re-enable raw terminal and rebuild reader
                 jlineTerminal = TerminalBuilder.builder().system(true).jansi(true).build()
                 jlineTerminal.enterRawMode()
                 reader = jlineTerminal.reader()
@@ -413,8 +406,9 @@ class InteractiveCommand : CliktCommand(
     }
 
     private fun exportMermaidFlow(symbols: List<dev.ajithgoveas.kindex.core.model.Symbol>, edges: List<dev.ajithgoveas.kindex.core.model.Edge>): String {
-        val classified = ArchitectureFlowAnalyzer.classifyNodes(symbols, edges)
-        val fileEdges = ArchitectureFlowAnalyzer.aggregateByFile(edges)
+        val flowEdges = edges.filter { it.relation != RelationType.CONTAINS }
+        val classified = ArchitectureFlowAnalyzer.classifyNodes(symbols, flowEdges)
+        val fileEdges = ArchitectureFlowAnalyzer.aggregateByFile(flowEdges)
         val sb = java.lang.StringBuilder("graph TD\n")
         sb.append("    classDef entry fill:#457b9d,color:#fff,stroke:#1d3557;\n")
         sb.append("    classDef service fill:#2a9d8f,color:#fff,stroke:#264653;\n")
@@ -426,7 +420,7 @@ class InteractiveCommand : CliktCommand(
             val nodes = layerGroups[layer] ?: continue
             val layerTitle = "${layer.emoji} ${layer.displayName}"
             sb.append("    subgraph ${layer.name}[\"$layerTitle\"]\n")
-            val files = nodes.map { it.id.substringAfterLast("/").substringAfterLast("\\").substringBefore("#") }.distinct()
+            val files = nodes.map { cleanDisplayName(it.id) }.distinct()
             val styleClass = when(layer) {
                 ArchitecturalLayer.ENTRY_POINTS -> "entry"
                 ArchitecturalLayer.SERVICES -> "service"
@@ -434,16 +428,20 @@ class InteractiveCommand : CliktCommand(
                 ArchitecturalLayer.UTILITIES -> "solo"
             }
             for (f in files.take(8)) {
-                val safeId = f.replace(Regex("[^a-zA-Z0-9_]"), "_")
+                val safeId = toMermaidSafeId(f)
                 sb.append("        $safeId[\"$f\"]:::$styleClass\n")
             }
             sb.append("    end\n\n")
         }
 
-        for (e in fileEdges.take(100)) {
-            val src = e.source.replace(Regex("[^a-zA-Z0-9_]"), "_")
-            val tgt = e.target.replace(Regex("[^a-zA-Z0-9_]"), "_")
-            sb.append("    $src -->|${e.relation} ${e.weight}x| $tgt\n")
+        val seenEdges = mutableSetOf<String>()
+        for (e in fileEdges.take(40)) {
+            val src = toMermaidSafeId(cleanDisplayName(e.source))
+            val tgt = toMermaidSafeId(cleanDisplayName(e.target))
+            if (src != tgt) {
+                val line = "    $src -->|${e.relation}| $tgt\n"
+                if (seenEdges.add(line)) sb.append(line)
+            }
         }
         return sb.toString()
     }
@@ -463,18 +461,18 @@ class InteractiveCommand : CliktCommand(
             sb.append("    subgraph cluster_${layer.name} {\n")
             sb.append("        label=\"${layer.emoji} ${layer.displayName}\";\n")
             sb.append("        style=dashed; color=\"#6C757D\";\n")
-            val files = nodes.map { it.id.substringAfterLast("/").substringAfterLast("\\").substringBefore("#") }.distinct()
+            val files = nodes.map { cleanDisplayName(it.id) }.distinct()
             for (f in files.take(8)) {
-                val safeId = f.replace(Regex("[^a-zA-Z0-9_]"), "_")
+                val safeId = toMermaidSafeId(f)
                 sb.append("        \"$safeId\" [label=\"$f\"];\n")
             }
             sb.append("    }\n\n")
         }
 
-        for (e in fileEdges.take(100)) {
-            val src = e.source.replace(Regex("[^a-zA-Z0-9_]"), "_")
-            val tgt = e.target.replace(Regex("[^a-zA-Z0-9_]"), "_")
-            sb.append("    \"$src\" -> \"$tgt\" [label=\"${e.relation} (${e.weight})\"];\n")
+        for (e in fileEdges.take(40)) {
+            val src = toMermaidSafeId(cleanDisplayName(e.source))
+            val tgt = toMermaidSafeId(cleanDisplayName(e.target))
+            sb.append("    \"$src\" -> \"$tgt\" [label=\"${e.relation}\"];\n")
         }
         sb.append("}\n")
         return sb.toString()
@@ -484,10 +482,10 @@ class InteractiveCommand : CliktCommand(
         val classified = ArchitectureFlowAnalyzer.classifyNodes(symbols, edges)
         val fileEdges = ArchitectureFlowAnalyzer.aggregateByFile(edges)
         val nodesJson = classified.map {
-            """    { "id": "${it.id.replace("\"", "\\\"")}", "name": "${it.name}", "layer": "${it.layer.name}", "type": "${it.symbolType}" }"""
+            """    { "id": "${cleanDisplayName(it.id)}", "name": "${it.name}", "layer": "${it.layer.name}", "type": "${it.symbolType}" }"""
         }
         val linksJson = fileEdges.map {
-            """    { "source": "${it.source}", "target": "${it.target}", "relation": "${it.relation}", "weight": ${it.weight} }"""
+            """    { "source": "${cleanDisplayName(it.source)}", "target": "${cleanDisplayName(it.target)}", "relation": "${it.relation}", "weight": ${it.weight} }"""
         }
         return "{\n  \"nodes\": [\n${nodesJson.joinToString(",\n")}\n  ],\n  \"links\": [\n${linksJson.joinToString(",\n")}\n  ]\n}"
     }
@@ -496,7 +494,9 @@ class InteractiveCommand : CliktCommand(
         val fileEdges = ArchitectureFlowAnalyzer.aggregateByFile(edges)
         val sb = java.lang.StringBuilder("digraph FileWiringGraph {\n    rankdir=LR;\n    node [shape=box, style=\"filled,rounded\", fillcolor=\"#E9ECEF\", fontname=\"Helvetica\"];\n")
         for (e in fileEdges) {
-            sb.append("    \"${e.source}\" -> \"${e.target}\" [label=\"${e.relation} (${e.weight})\"];\n")
+            val src = cleanDisplayName(e.source)
+            val tgt = cleanDisplayName(e.target)
+            sb.append("    \"$src\" -> \"$tgt\" [label=\"${e.relation} (${e.weight})\"];\n")
         }
         sb.append("}\n")
         return sb.toString()
@@ -511,6 +511,19 @@ class InteractiveCommand : CliktCommand(
             """    { "source": "${it.source}", "target": "${it.target}", "relation": "${it.relation}", "weight": ${it.weight} }"""
         }
         return "{\n  \"nodes\": [\n${nodes.joinToString(",\n")}\n  ],\n  \"links\": [\n${links.joinToString(",\n")}\n  ]\n}"
+    }
+
+    private fun cleanDisplayName(raw: String): String {
+        val path = raw.substringBefore("#")
+        val shortName = path.substringAfterLast("/").substringAfterLast("\\")
+        val result = if (shortName.contains(".")) shortName.substringAfterLast(".") else shortName
+        return if (result.isBlank()) "Root" else result
+    }
+
+    private fun toMermaidSafeId(rawName: String): String {
+        val clean = rawName.replace(Regex("[^a-zA-Z0-9_]"), "_")
+        val reservedKeywords = setOf("graph", "subgraph", "end", "style", "class", "classdef", "click", "direction")
+        return if (clean.lowercase() in reservedKeywords || clean.isEmpty()) "node_$clean" else clean
     }
 
     private fun cleanupSession(dbDir: File, t: Terminal) {
