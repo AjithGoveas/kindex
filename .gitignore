@@ -17,6 +17,8 @@ out/
 **/out/
 bin/
 **/bin/
+dist/
+*.hprof
 
 # Cache directories
 .gradletasknamecache

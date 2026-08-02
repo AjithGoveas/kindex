@@ -18,6 +18,7 @@ kotlin {
                 binaries {
                     executable {
                         entryPoint = "dev.ajithgoveas.kindex.cli.main"
+                        linkerOpts("-LC:/Users/ajith/.konan/dependencies/lldb-2-windows/bin", "-lsqlite3")
                     }
                 }
             }

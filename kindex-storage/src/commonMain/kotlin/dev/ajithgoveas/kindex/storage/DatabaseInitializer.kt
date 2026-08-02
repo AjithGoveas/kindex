@@ -39,7 +39,7 @@ class IndexStorage(dbPath: MPFile) {
     init {
         // Run SQLite performance pragmas
         try {
-            driver.execute(null, "PRAGMA journal_mode = WAL;", 0)
+            driver.executeQuery(null, "PRAGMA journal_mode = WAL;", { QueryResult.Value(Unit) }, 0)
             driver.execute(null, "PRAGMA synchronous = NORMAL;", 0)
         } catch (e: Exception) {
             // Ignore PRAGMA execution errors if some drivers restrict them
