@@ -44,8 +44,9 @@ This document tracks the milestones, architectural upgrades, and completed phase
 
 ---
 
-### Phase 6: Git Hook Automation (`kindex hook`)
-*   **Git Lifecycle Hooks:** Added `kindex hook install` and `kindex hook uninstall` commands creating `.git/hooks/post-commit` and `.git/hooks/post-checkout` scripts.
+### Phase 6: Git Hook Automation & Optimizations (`kindex hook`)
+*   **Git Lifecycle Hooks:** Added `install`, `uninstall`, and `status` actions supporting `post-commit`, `post-checkout`, `post-merge`, and `post-rewrite` hooks.
+*   **Non-Blocking Detached Execution:** Embedded background subshell (`(...) >/dev/null 2>&1 &`) in generated shell scripts so Git operations complete instantly without blocking.
 *   **Quiet Background Rescans:** Added `--quiet` / `-q` flag to `ScanCommand` suppressing interactive output during automatic background indexing.
 
 ---

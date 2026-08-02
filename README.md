@@ -154,9 +154,16 @@ Explore codebase structure, search symbols, and list dead code with arrow keys:
 ```
 
 #### 4. Git Hook Automation
-Install background re-scan hooks for Git `post-commit` and `post-checkout` events:
+Install, inspect, or remove non-blocking background re-scan hooks for Git lifecycle events (`post-commit`, `post-checkout`, `post-merge`, `post-rewrite`):
 ```bash
+# Check status of Git hooks
+./kindex-cli/build/install/kindex-cli/bin/kindex-cli hook status /path/to/target/project
+
+# Install non-blocking background hooks
 ./kindex-cli/build/install/kindex-cli/bin/kindex-cli hook install /path/to/target/project
+
+# Uninstall hooks
+./kindex-cli/build/install/kindex-cli/bin/kindex-cli hook uninstall /path/to/target/project
 ```
 
 ---
