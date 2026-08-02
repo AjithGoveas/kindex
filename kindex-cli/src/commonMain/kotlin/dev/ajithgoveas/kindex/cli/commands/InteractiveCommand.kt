@@ -11,13 +11,12 @@ import dev.ajithgoveas.kindex.core.io.RepositoryGuardrail
 import dev.ajithgoveas.kindex.core.io.RepositoryRootResolver
 import dev.ajithgoveas.kindex.core.io.disableRawMode
 import dev.ajithgoveas.kindex.core.io.enableRawMode
-import dev.ajithgoveas.kindex.core.io.getTerminalSize
 import dev.ajithgoveas.kindex.core.io.readKey
 import dev.ajithgoveas.kindex.core.model.RelationType
 import dev.ajithgoveas.kindex.core.model.Symbol
 import dev.ajithgoveas.kindex.core.model.SymbolType
 import dev.ajithgoveas.kindex.storage.IndexStorage
-import kotlin.enums.enumEntries
+import dev.ajithgoveas.kindex.core.io.getTerminalSize
 
 // ─── ANSI escape helpers ─────────────────────────────────────────────────────
 
@@ -31,7 +30,6 @@ private const val ALT_OFF = "$ESC[?1049l"
 private const val HIDE    = "$ESC[?25l"
 private const val SHOW    = "$ESC[?25h"
 
-// ESC[0K — clear from cursor position to end of line (PRESERVES chars to the left)
 private const val CLR_EOL = "$ESC[0K"
 
 private fun fg(r: Int, g: Int, b: Int) = "$ESC[38;2;$r;$g;${b}m"
@@ -48,17 +46,13 @@ private val C_BRIGHT   = fg(243, 244, 246)  // grey-100
 private val C_RED      = fg(248, 113, 113)  // red-400
 private val C_CYAN     = fg( 34, 211, 238)  // cyan
 private val BG_TITLE   = bg( 17,  24,  39)  // grey-900
-private val BG_SEL     = bg( 55,  48, 163)  // indigo-800 (selection highlight)
+private val BG_SEL     = bg( 55,  48, 163)  // indigo-800
 
-// ─── Layout constants ─────────────────────────────────────────────────────────
-
-private const val MENU_W   = 24   // sidebar width in columns
-private const val HEADER_H = 3    // header rows
-private const val FOOTER_H = 2    // footer rows
+private const val MENU_W   = 24
+private const val HEADER_H = 3
+private const val FOOTER_H = 2
 private const val DIV_COL  = MENU_W + 1
 private const val CONT_COL = MENU_W + 3
-
-// ─── Menu definitions ─────────────────────────────────────────────────────────
 
 private data class MenuItem(val num: String, val label: String, val desc: String)
 
@@ -67,19 +61,15 @@ private val MENU_ITEMS = listOf(
     MenuItem("2", "Deps",      "Call graph & references"),
     MenuItem("3", "Stats",     "Repository metrics"),
     MenuItem("4", "Flow",      "Architectural layers"),
-    MenuItem("5", "Export",    "Export Mermaid diagram"),
+    MenuItem("5", "Export",    "Export diagram (Submenu)"),
     MenuItem("6", "Dead Code", "Unreferenced symbols"),
 )
 
-private enum class TuiScreen { Menu, Input, Content }
-
-// ─── Buffered output ──────────────────────────────────────────────────────────
+private enum class TuiScreen { Menu, Input, ExportSubMenu, Content }
 
 private val buf = StringBuilder(8192)
 private fun w(s: String)  { buf.append(s) }
 private fun flush()       { print(buf); buf.clear() }
-
-// ─── The command ──────────────────────────────────────────────────────────────
 
 class InteractiveCommand : CliktCommand(
     name        = "interactive",
@@ -90,7 +80,6 @@ class InteractiveCommand : CliktCommand(
     private lateinit var rootDir: MPFile
     private lateinit var storage: IndexStorage
 
-    // Terminal dimensions — read from the platform's terminal query, fall back to safe defaults
     private val termW: Int get() = getTerminalSize().first
     private val termH: Int get() = getTerminalSize().second
 
@@ -117,32 +106,84 @@ class InteractiveCommand : CliktCommand(
         try { loop() } finally { print(SHOW + ALT_OFF); disableRawMode() }
     }
 
-    // ─── Event loop ───────────────────────────────────────────────────────────
-
     private fun loop() {
-        var sel   = 0
-        var mode  = TuiScreen.Menu
-        var lines = emptyList<String>()
-        var inBuf = ""
-        var inPmt = ""
+        var sel       = 0
+        var exportSel = 0
+        var mode      = TuiScreen.Menu
+        var lines     = emptyList<String>()
+        var inBuf     = ""
+        var inPmt     = ""
         var inCb: (String) -> List<String> = { emptyList() }
 
         while (true) {
-            render(sel, mode, lines, inBuf, inPmt)
+            render(sel, exportSel, mode, lines, inBuf, inPmt)
             val k = readKey()
 
             when (mode) {
                 TuiScreen.Menu -> when (k) {
                     KeyEvent.Up    -> sel = (sel - 1 + MENU_ITEMS.size) % MENU_ITEMS.size
                     KeyEvent.Down  -> sel = (sel + 1) % MENU_ITEMS.size
-                    KeyEvent.Enter -> { mode = activate(sel).also { if (it == TuiScreen.Input) { inBuf = ""; inPmt = promptFor(sel); inCb = callbackFor(sel) } else lines = dataFor(sel) } }
+                    KeyEvent.Enter -> {
+                        if (sel == 4) {
+                            mode = TuiScreen.ExportSubMenu
+                            exportSel = 0
+                        } else {
+                            mode = activate(sel).also {
+                                if (it == TuiScreen.Input) {
+                                    inBuf = ""
+                                    inPmt = promptFor(sel)
+                                    inCb = callbackFor(sel)
+                                } else lines = dataFor(sel)
+                            }
+                        }
+                    }
                     KeyEvent.Escape -> return
                     is KeyEvent.Character -> {
                         if (k.c == 'q') return
                         val n = k.c.digitToIntOrNull()
                         if (n != null && n in 1..MENU_ITEMS.size) {
                             sel = n - 1
-                            mode = activate(sel).also { if (it == TuiScreen.Input) { inBuf = ""; inPmt = promptFor(sel); inCb = callbackFor(sel) } else lines = dataFor(sel) }
+                            if (sel == 4) {
+                                mode = TuiScreen.ExportSubMenu
+                                exportSel = 0
+                            } else {
+                                mode = activate(sel).also {
+                                    if (it == TuiScreen.Input) {
+                                        inBuf = ""
+                                        inPmt = promptFor(sel)
+                                        inCb = callbackFor(sel)
+                                    } else lines = dataFor(sel)
+                                }
+                            }
+                        }
+                    }
+                    else -> {}
+                }
+
+                TuiScreen.ExportSubMenu -> when (k) {
+                    KeyEvent.Up -> exportSel = (exportSel - 1 + 3) % 3
+                    KeyEvent.Down -> exportSel = (exportSel + 1) % 3
+                    KeyEvent.Enter -> {
+                        val fmt = when (exportSel) {
+                            0 -> "mermaid"
+                            1 -> "dot"
+                            else -> "json"
+                        }
+                        lines = doExport(fmt)
+                        mode = TuiScreen.Content
+                    }
+                    KeyEvent.Escape -> mode = TuiScreen.Menu
+                    is KeyEvent.Character -> {
+                        val n = k.c.digitToIntOrNull()
+                        if (n != null && n in 1..3) {
+                            exportSel = n - 1
+                            val fmt = when (exportSel) {
+                                0 -> "mermaid"
+                                1 -> "dot"
+                                else -> "json"
+                            }
+                            lines = doExport(fmt)
+                            mode = TuiScreen.Content
                         }
                     }
                     else -> {}
@@ -171,33 +212,26 @@ class InteractiveCommand : CliktCommand(
     private fun dataFor(sel: Int) = when (sel) {
         2    -> doStats()
         3    -> doFlow()
-        4    -> doExport()
         5    -> doDeadCode()
         else -> emptyList()
     }
 
-    // ─── Renderer ─────────────────────────────────────────────────────────────
-
-    private fun render(sel: Int, mode: TuiScreen, lines: List<String>, inBuf: String, inPmt: String) {
+    private fun render(sel: Int, exportSel: Int, mode: TuiScreen, lines: List<String>, inBuf: String, inPmt: String) {
         val w = termW
         val h = termH
-        val bodyH = h - HEADER_H - FOOTER_H     // rows available for menu+content
-        val menuRows = MENU_ITEMS.size * 2 + 2   // items (2 rows each) + top/bottom border
-        val contW = w - CONT_COL                  // usable content columns
+        val bodyH = h - HEADER_H - FOOTER_H
+        val menuRows = MENU_ITEMS.size * 2 + 2
+        val contW = w - CONT_COL
 
         buf.clear()
-
-        // Full clear each frame — guarantees no stale rows from a previous,
-        // possibly taller render can survive (kills the "growing menu" bug)
         w(CLEAR)
 
-        // ── 1. Header ─────────────────────────────────────────────────────────
+        // Header
         w(at(1, 1))
         w(BG_TITLE + " ".repeat(w) + RESET)
         w(at(1, 1))
         w("$BG_TITLE $BOLD$C_ACCENT KINDEX$RESET$BG_TITLE $C_MUTED v1.0.0$RESET$BG_TITLE")
         w("  $C_MUTED|$RESET$BG_TITLE  ${rootDir.absolutePath.takeLast(w - 30)}")
-        // [q] Quit flush-right
         val qStr = "  [q] Quit "
         w(at(1, w - qStr.length + 1))
         w("$BG_TITLE$C_RED$qStr$RESET")
@@ -205,19 +239,16 @@ class InteractiveCommand : CliktCommand(
         w(at(2, 1))
         w("$C_MUTED${"─".repeat(w)}$RESET")
 
-        // ── 2. Sidebar: full box drawn first, then content rows ───────────────
+        // Sidebar
         val sideTop = HEADER_H + 1
-
-        // Top border
         w(at(sideTop, 1))
         w("$C_MUTED╭${"─".repeat(MENU_W - 2)}╮$RESET")
 
-        // Menu rows — each item: 1 label row + 1 desc row
         for (i in MENU_ITEMS.indices) {
             val item  = MENU_ITEMS[i]
             val rowA  = sideTop + 1 + i * 2
             val rowB  = rowA + 1
-            val active = (i == sel && mode == TuiScreen.Menu)
+            val active = (i == sel && (mode == TuiScreen.Menu || mode == TuiScreen.ExportSubMenu))
             val numStr = item.num
             val labelPad = (MENU_W - 7).coerceAtLeast(0)
             val descPad  = (MENU_W - 5).coerceAtLeast(0)
@@ -233,18 +264,16 @@ class InteractiveCommand : CliktCommand(
             w("$C_MUTED│  $DIM${item.desc.take(descPad).padEnd(descPad)}$RESET$C_MUTED│$RESET")
         }
 
-        // Bottom border
         val sideBot = sideTop + menuRows - 1
         w(at(sideBot, 1))
         w("$C_MUTED╰${"─".repeat(MENU_W - 2)}╯$RESET")
 
-        // Vertical divider spanning the full body height
         for (r in sideTop..<sideTop + bodyH) {
             w(at(r, DIV_COL))
             w("$C_MUTED│$RESET")
         }
 
-        // ── 3. Content pane ───────────────────────────────────────────────────
+        // Content Pane
         val contTop  = sideTop
         val contRows = bodyH - 1
 
@@ -256,6 +285,32 @@ class InteractiveCommand : CliktCommand(
                     w(CLR_EOL)
                     if (r < welcome.size) w(welcome[r])
                 }
+            }
+
+            TuiScreen.ExportSubMenu -> {
+                val subOptions = listOf(
+                    "1. Mermaid Flow Diagram (.mmd)",
+                    "2. Graphviz DOT Graph    (.dot)",
+                    "3. JSON Node & Link Graph (.json)"
+                )
+                for (r in 0 until contRows) {
+                    w(at(contTop + r, CONT_COL))
+                    w(CLR_EOL)
+                }
+                w(at(contTop + 1, CONT_COL))
+                w("$C_ACCENT2$BOLD  ◈ Select Export Format$RESET")
+                w(at(contTop + 2, CONT_COL))
+                w("$C_MUTED  ────────────────────────────────────────────$RESET")
+                for ((idx, opt) in subOptions.withIndex()) {
+                    w(at(contTop + 4 + idx * 2, CONT_COL))
+                    if (idx == exportSel) {
+                        w("  $BG_SEL $BOLD$C_ACCENT2 ▶  $opt $RESET")
+                    } else {
+                        w("     $C_BRIGHT$opt$RESET")
+                    }
+                }
+                w(at(contTop + 12, CONT_COL))
+                w("${DIM}Use arrow keys or [1-3] to select format · ${C_BRIGHT}Esc${RESET}${DIM} to cancel$RESET")
             }
 
             TuiScreen.Input -> {
@@ -284,13 +339,12 @@ class InteractiveCommand : CliktCommand(
                     w(CLR_EOL)
                     if (r < lines.size) w(lines[r])
                 }
-                // Back hint
                 w(at(contTop + contRows, CONT_COL))
                 w("${DIM}Enter$RESET$DIM/$RESET${DIM}Esc$RESET$DIM — back$RESET")
             }
         }
 
-        // ── 4. Footer ─────────────────────────────────────────────────────────
+        // Footer
         w(at(h - 1, 1))
         w("$C_MUTED${"─".repeat(w)}$RESET")
         w(at(h, 1))
@@ -305,8 +359,6 @@ class InteractiveCommand : CliktCommand(
 
         flush()
     }
-
-    // ─── Welcome pane content ─────────────────────────────────────────────────
 
     private fun buildWelcome(): List<String> {
         return try {
@@ -331,8 +383,6 @@ class InteractiveCommand : CliktCommand(
             listOf("  $C_WARN  Could not load stats$RESET")
         }
     }
-
-    // ─── Action data providers ────────────────────────────────────────────────
 
     private fun doSearch(query: String): List<String> {
         if (query.isBlank()) return listOf("  $C_MUTED No query entered.$RESET")
@@ -391,7 +441,7 @@ class InteractiveCommand : CliktCommand(
             val byLayer = nodes.groupBy { it.layer }
             buildList {
                 add(""); add("  $C_ACCENT2$BOLD Architectural Layers$RESET"); add("")
-                enumEntries<ArchitecturalLayer>().forEach { layer ->
+                enumValues<ArchitecturalLayer>().forEach { layer ->
                     val cnt = byLayer[layer]?.size ?: 0
                     add("  $C_BRIGHT${layer.displayName.padEnd(30)}$RESET $BOLD$C_CYAN$cnt$RESET")
                 }
@@ -404,26 +454,66 @@ class InteractiveCommand : CliktCommand(
         } catch (e: Exception) { listOf("  $C_RED Error: ${e.message}$RESET") }
     }
 
-    private fun doExport(): List<String> {
+    private fun doExport(format: String): List<String> {
         return try {
             val nodes   = ArchitectureFlowAnalyzer.classifyNodes(storage.getAllSymbols(), storage.getAllEdges())
             val byLayer = nodes.groupBy { it.layer }
-            val path    = "${rootDir.path}/.kindex/graph.mmd"
-            val content = buildString {
-                appendLine("graph TD")
-                byLayer.forEach { (layer, layerNodes) ->
-                    if (layerNodes.isEmpty()) return@forEach
-                    appendLine("    subgraph ${layer.name.lowercase()} [\"${layer.displayName}\"]")
-                    layerNodes.take(15).forEach { node ->
-                        val id = node.id.substringAfterLast('/').substringAfterLast('\\')
-                            .substringBefore('#').replace(Regex("[^a-zA-Z0-9_]"), "_")
-                        appendLine("        $id[\"${node.name}\"]")
+            val ext = when (format.lowercase()) {
+                "dot", "graphviz" -> "dot"
+                "json" -> "json"
+                else -> "mmd"
+            }
+            val path = "${rootDir.path}/.kindex/graph.$ext"
+            val content = when (ext) {
+                "dot" -> {
+                    buildString {
+                        appendLine("digraph KIndexFlowGraph {")
+                        appendLine("    rankdir=TB; compound=true;")
+                        appendLine("    node [shape=box, style=\"filled,rounded\", fontname=\"Helvetica\", color=\"#495057\", fillcolor=\"#F8F9FA\"];")
+                        byLayer.forEach { (layer, layerNodes) ->
+                            if (layerNodes.isEmpty()) return@forEach
+                            appendLine("    subgraph cluster_${layer.name.lowercase()} {")
+                            appendLine("        label=\"${layer.displayName}\";")
+                            layerNodes.take(15).forEach { node ->
+                                val id = node.id.substringAfterLast('/').substringAfterLast('\\').substringBefore('#').replace(Regex("[^a-zA-Z0-9_]"), "_")
+                                appendLine("        \"$id\" [label=\"${node.name}\"];")
+                            }
+                            appendLine("    }")
+                        }
+                        appendLine("}")
                     }
-                    appendLine("    end")
+                }
+                "json" -> {
+                    val jsonNodes = nodes.map { """    { "id": "${it.id}", "name": "${it.name}", "layer": "${it.layer.name}" }""" }
+                    "{\n  \"nodes\": [\n${jsonNodes.joinToString(",\n")}\n  ]\n}"
+                }
+                else -> {
+                    buildString {
+                        appendLine("graph TD")
+                        byLayer.forEach { (layer, layerNodes) ->
+                            if (layerNodes.isEmpty()) return@forEach
+                            appendLine("    subgraph ${layer.name.lowercase()} [\"${layer.displayName}\"]")
+                            layerNodes.take(15).forEach { node ->
+                                val id = node.id.substringAfterLast('/').substringAfterLast('\\')
+                                    .substringBefore('#').replace(Regex("[^a-zA-Z0-9_]"), "_")
+                                appendLine("        $id[\"${node.name}\"]")
+                            }
+                            appendLine("    end")
+                        }
+                    }
                 }
             }
+
             MPFile(path).writeText(content)
-            listOf("", "  $C_SUCCESS$BOLD Export complete$RESET", "", "  $C_MUTED Written to:$RESET", "  $C_BRIGHT  $path$RESET", "", "  $C_MUTED Nodes: $RESET$BOLD$C_CYAN${nodes.size}$RESET")
+            listOf(
+                "",
+                "  $C_SUCCESS$BOLD✓ Export complete (${format.uppercase()})$RESET",
+                "",
+                "  $C_MUTED Written to:$RESET",
+                "  $C_BRIGHT  $path$RESET",
+                "",
+                "  $C_MUTED Nodes exported: $RESET$BOLD$C_CYAN${nodes.size}$RESET"
+            )
         } catch (e: Exception) { listOf("  $C_RED Error: ${e.message}$RESET") }
     }
 
