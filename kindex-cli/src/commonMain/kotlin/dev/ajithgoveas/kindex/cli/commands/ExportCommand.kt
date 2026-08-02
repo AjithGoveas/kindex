@@ -126,14 +126,18 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
                 sb.append("    node [shape=box, style=\"filled,rounded\", fontname=\"Helvetica\", color=\"#495057\", fillcolor=\"#F8F9FA\"];\n")
                 sb.append("    edge [fontname=\"Helvetica\", fontsize=9, color=\"#6C757D\"];\n\n")
 
+                val connectedFiles = fileEdges.flatMap { listOf(cleanDisplayName(it.source), cleanDisplayName(it.target)) }.toSet()
                 val layerGroups = classifiedNodes.groupBy { it.layer }
-                for (layer in ArchitecturalLayer.values()) {
+
+                for (layer in ArchitecturalLayer.entries) {
                     val nodes = layerGroups[layer] ?: continue
+                    val fileNames = nodes.map { cleanDisplayName(it.id) }.distinct().filter { it in connectedFiles || connectedFiles.isEmpty() }
+                    if (fileNames.isEmpty()) continue
+
                     sb.append("    subgraph cluster_${layer.name} {\n")
                     sb.append("        label=\"${layer.emoji} ${layer.displayName}\";\n")
                     sb.append("        style=dashed; color=\"#6C757D\";\n")
-                    val fileNames = nodes.map { cleanDisplayName(it.id) }.distinct()
-                    for (f in fileNames.take(8)) {
+                    for (f in fileNames) {
                         val safeId = toMermaidSafeId(f)
                         sb.append("        \"$safeId\" [label=\"$f\"];\n")
                     }
@@ -141,7 +145,7 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
                 }
 
                 val seenEdges = mutableSetOf<String>()
-                for (e in fileEdges.take(40)) {
+                for (e in fileEdges) {
                     val srcName = cleanDisplayName(e.source)
                     val tgtName = cleanDisplayName(e.target)
                     val src = toMermaidSafeId(srcName)
@@ -161,19 +165,23 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
                 sb.append("    classDef storage fill:#e76f51,color:#fff,stroke:#b7094c,stroke-width:2px;\n")
                 sb.append("    classDef solo fill:#e9ecef,color:#212529,stroke:#ced4da,stroke-width:1px,stroke-dasharray: 5 5;\n\n")
 
+                val connectedFiles = fileEdges.flatMap { listOf(cleanDisplayName(it.source), cleanDisplayName(it.target)) }.toSet()
                 val layerGroups = classifiedNodes.groupBy { it.layer }
-                for (layer in ArchitecturalLayer.values()) {
+
+                for (layer in ArchitecturalLayer.entries) {
                     val nodes = layerGroups[layer] ?: continue
+                    val fileNames = nodes.map { cleanDisplayName(it.id) }.distinct().filter { it in connectedFiles || connectedFiles.isEmpty() }
+                    if (fileNames.isEmpty()) continue
+
                     val layerTitle = "${layer.emoji} ${layer.displayName}"
                     sb.append("    subgraph ${layer.name}[\"$layerTitle\"]\n")
-                    val files = nodes.map { cleanDisplayName(it.id) }.distinct()
                     val styleClass = when(layer) {
                         ArchitecturalLayer.ENTRY_POINTS -> "entry"
                         ArchitecturalLayer.SERVICES -> "service"
                         ArchitecturalLayer.STORAGE -> "storage"
                         ArchitecturalLayer.UTILITIES -> "solo"
                     }
-                    for (f in files.take(8)) {
+                    for (f in fileNames) {
                         val safeId = toMermaidSafeId(f)
                         sb.append("        $safeId[\"$f\"]:::$styleClass\n")
                     }
@@ -181,7 +189,7 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
                 }
 
                 val seenEdges = mutableSetOf<String>()
-                for (e in fileEdges.take(40)) {
+                for (e in fileEdges) {
                     val srcName = cleanDisplayName(e.source)
                     val tgtName = cleanDisplayName(e.target)
                     val src = toMermaidSafeId(srcName)

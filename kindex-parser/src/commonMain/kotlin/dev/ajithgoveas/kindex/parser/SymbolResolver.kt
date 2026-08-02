@@ -22,7 +22,7 @@ class SymbolResolver {
                 resolvedEdges.add(
                     Edge(
                         sourceId = filePath,
-                        targetId = matchedSymbol.id,
+                        targetId = matchedSymbol.filePath,
                         relation = RelationType.IMPORTS
                     )
                 )
@@ -34,7 +34,23 @@ class SymbolResolver {
                     resolvedEdges.add(
                         Edge(
                             sourceId = filePath,
-                            targetId = sym.id,
+                            targetId = sym.filePath,
+                            relation = RelationType.IMPORTS
+                        )
+                    )
+                }
+            } else {
+                // Match by file name (e.g. import "MPFile" or "dev.ajithgoveas.kindex.core.io.MPFile")
+                val baseName = importFqn.substringAfterLast('.').substringAfterLast('/')
+                val matchingFile = symbolIndex.values.find { 
+                    val fName = it.filePath.substringAfterLast('/').substringAfterLast('\\').substringBefore('.')
+                    fName.equals(baseName, ignoreCase = true)
+                }
+                if (matchingFile != null && matchingFile.filePath != filePath) {
+                    resolvedEdges.add(
+                        Edge(
+                            sourceId = filePath,
+                            targetId = matchingFile.filePath,
                             relation = RelationType.IMPORTS
                         )
                     )
