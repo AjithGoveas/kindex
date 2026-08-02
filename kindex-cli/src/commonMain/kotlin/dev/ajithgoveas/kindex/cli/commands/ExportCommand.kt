@@ -41,7 +41,11 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
         }
         try {
             dev.ajithgoveas.kindex.core.io.RepositoryGuardrail.assertWithinRepository(targetDir, rootDir)
-            outputOpt?.let { dev.ajithgoveas.kindex.core.io.RepositoryGuardrail.assertWithinRepository(MPFile(it), rootDir) }
+            outputOpt?.let { 
+                val cleanPath = it.replace('\\', '/')
+                val outFile = if (cleanPath.startsWith("/") || cleanPath.contains(":")) MPFile(cleanPath) else MPFile("${rootDir.absolutePath}/$cleanPath")
+                dev.ajithgoveas.kindex.core.io.RepositoryGuardrail.assertWithinRepository(outFile, rootDir) 
+            }
         } catch (e: dev.ajithgoveas.kindex.core.io.RepositoryBoundaryException) {
             t.println(red(e.message ?: "Security Boundary Error"))
             return

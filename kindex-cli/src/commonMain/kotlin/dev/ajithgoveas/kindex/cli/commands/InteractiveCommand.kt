@@ -456,8 +456,12 @@ class InteractiveCommand : CliktCommand(
 
     private fun doExport(format: String): List<String> {
         return try {
-            val nodes   = ArchitectureFlowAnalyzer.classifyNodes(storage.getAllSymbols(), storage.getAllEdges())
+            val symbols = storage.getAllSymbols()
+            val edges   = storage.getAllEdges()
+            val nodes   = ArchitectureFlowAnalyzer.classifyNodes(symbols, edges)
             val byLayer = nodes.groupBy { it.layer }
+            val fileEdges = ArchitectureFlowAnalyzer.aggregateByFile(edges.filter { it.relation != RelationType.CONTAINS })
+
             val ext = when (format.lowercase()) {
                 "dot", "graphviz" -> "dot"
                 "json" -> "json"
@@ -470,22 +474,38 @@ class InteractiveCommand : CliktCommand(
                         appendLine("digraph KIndexFlowGraph {")
                         appendLine("    rankdir=TB; compound=true;")
                         appendLine("    node [shape=box, style=\"filled,rounded\", fontname=\"Helvetica\", color=\"#495057\", fillcolor=\"#F8F9FA\"];")
+                        appendLine("    edge [fontname=\"Helvetica\", fontsize=9, color=\"#6C757D\"];")
                         byLayer.forEach { (layer, layerNodes) ->
                             if (layerNodes.isEmpty()) return@forEach
                             appendLine("    subgraph cluster_${layer.name.lowercase()} {")
                             appendLine("        label=\"${layer.displayName}\";")
-                            layerNodes.take(15).forEach { node ->
-                                val id = node.id.substringAfterLast('/').substringAfterLast('\\').substringBefore('#').replace(Regex("[^a-zA-Z0-9_]"), "_")
-                                appendLine("        \"$id\" [label=\"${node.name}\"];")
+                            val fileNames = layerNodes.map { cleanDisplayName(it.id) }.distinct()
+                            fileNames.take(12).forEach { f ->
+                                val safeId = toMermaidSafeId(f)
+                                appendLine("        \"$safeId\" [label=\"$f\"];")
                             }
                             appendLine("    }")
+                        }
+                        val seen = mutableSetOf<String>()
+                        fileEdges.take(50).forEach { e ->
+                            val srcName = cleanDisplayName(e.source)
+                            val tgtName = cleanDisplayName(e.target)
+                            val src = toMermaidSafeId(srcName)
+                            val tgt = toMermaidSafeId(tgtName)
+                            if (src != tgt) {
+                                val line = "    \"$src\" -> \"$tgt\" [label=\"${e.relation}\"];"
+                                if (seen.add(line)) appendLine(line)
+                            }
                         }
                         appendLine("}")
                     }
                 }
                 "json" -> {
                     val jsonNodes = nodes.map { """    { "id": "${it.id}", "name": "${it.name}", "layer": "${it.layer.name}" }""" }
-                    "{\n  \"nodes\": [\n${jsonNodes.joinToString(",\n")}\n  ]\n}"
+                    val jsonLinks = edges.filter { it.relation != RelationType.CONTAINS }.take(100).map {
+                        """    { "source": "${it.sourceId}", "target": "${it.targetId}", "relation": "${it.relation.name}" }"""
+                    }
+                    "{\n  \"nodes\": [\n${jsonNodes.joinToString(",\n")}\n  ],\n  \"links\": [\n${jsonLinks.joinToString(",\n")}\n  ]\n}"
                 }
                 else -> {
                     buildString {
@@ -493,12 +513,23 @@ class InteractiveCommand : CliktCommand(
                         byLayer.forEach { (layer, layerNodes) ->
                             if (layerNodes.isEmpty()) return@forEach
                             appendLine("    subgraph ${layer.name.lowercase()} [\"${layer.displayName}\"]")
-                            layerNodes.take(15).forEach { node ->
-                                val id = node.id.substringAfterLast('/').substringAfterLast('\\')
-                                    .substringBefore('#').replace(Regex("[^a-zA-Z0-9_]"), "_")
-                                appendLine("        $id[\"${node.name}\"]")
+                            val files = layerNodes.map { cleanDisplayName(it.id) }.distinct()
+                            files.take(12).forEach { f ->
+                                val safeId = toMermaidSafeId(f)
+                                appendLine("        $safeId[\"$f\"]")
                             }
                             appendLine("    end")
+                        }
+                        val seen = mutableSetOf<String>()
+                        fileEdges.take(50).forEach { e ->
+                            val srcName = cleanDisplayName(e.source)
+                            val tgtName = cleanDisplayName(e.target)
+                            val src = toMermaidSafeId(srcName)
+                            val tgt = toMermaidSafeId(tgtName)
+                            if (src != tgt) {
+                                val line = "    $src -->|${e.relation}| $tgt"
+                                if (seen.add(line)) appendLine(line)
+                            }
                         }
                     }
                 }
@@ -512,9 +543,27 @@ class InteractiveCommand : CliktCommand(
                 "  $C_MUTED Written to:$RESET",
                 "  $C_BRIGHT  $path$RESET",
                 "",
-                "  $C_MUTED Nodes exported: $RESET$BOLD$C_CYAN${nodes.size}$RESET"
+                "  $C_MUTED Nodes: $RESET$BOLD$C_CYAN${nodes.size}$RESET  $C_MUTED Edges: $RESET$BOLD$C_CYAN${fileEdges.size}$RESET"
             )
         } catch (e: Exception) { listOf("  $C_RED Error: ${e.message}$RESET") }
+    }
+
+    private fun cleanDisplayName(raw: String): String {
+        val path = raw.substringBefore("#")
+        val fileName = path.substringAfterLast("/").substringAfterLast("\\")
+        if (fileName.endsWith(".kt") || fileName.endsWith(".java") || fileName.endsWith(".rs") || 
+            fileName.endsWith(".ts") || fileName.endsWith(".js") || fileName.endsWith(".go") || 
+            fileName.endsWith(".c") || fileName.endsWith(".cpp") || fileName.endsWith(".cs")) {
+            return fileName
+        }
+        val shortSymbol = if (fileName.contains(".")) fileName.substringAfterLast(".") else fileName
+        return if (shortSymbol.isBlank()) "Main.kt" else "$shortSymbol.kt"
+    }
+
+    private fun toMermaidSafeId(rawName: String): String {
+        val clean = rawName.replace(Regex("[^a-zA-Z0-9_]"), "_")
+        val reservedKeywords = setOf("graph", "subgraph", "end", "style", "class", "classdef", "click", "direction")
+        return if (clean.lowercase() in reservedKeywords || clean.isEmpty()) "node_$clean" else clean
     }
 
     private fun doDeadCode(): List<String> {
