@@ -58,13 +58,14 @@ Migrate symbol query lookup from simple `LIKE` statements to SQLite FTS5 for fas
 
 ---
 
-### ⚓ Option 3: Option 3: Git Hook Automation (`kindex hook install`)
+### ⚓ Option 3: Git Hook Automation (`kindex hook`) [COMPLETED ✅]
 
-Automate index maintenance in the background via Git lifecycle hooks.
+Automate index maintenance in the background via Git lifecycle hooks (`post-commit`, `post-checkout`, `post-merge`, `post-rewrite`).
 
 * **Key Deliverables:**
-  - [x] Implement a `kindex hook install` command writing lightweight `.git/hooks/post-commit` and `post-checkout` hooks.
-  - [x] Run silent background re-scans (`kindex scan . --quiet`) when changes occur, keeping the graph synchronized.
+  - [x] Implement a `kindex hook install` command writing lightweight non-blocking background hooks.
+  - [x] Support `post-commit`, `post-checkout`, `post-merge`, and `post-rewrite` hooks.
+  - [x] Add `kindex hook status` command and `--quiet` scan mode for silent background index synchronization.
 
 ---
 
