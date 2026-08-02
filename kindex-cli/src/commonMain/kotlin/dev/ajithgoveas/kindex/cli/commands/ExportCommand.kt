@@ -12,6 +12,7 @@ import com.github.ajalt.mordant.terminal.Terminal
 import dev.ajithgoveas.kindex.core.analysis.ArchitectureFlowAnalyzer
 import dev.ajithgoveas.kindex.core.analysis.ArchitecturalLayer
 import dev.ajithgoveas.kindex.core.model.Edge
+import dev.ajithgoveas.kindex.core.model.RelationType
 import dev.ajithgoveas.kindex.core.model.Symbol
 import dev.ajithgoveas.kindex.storage.IndexStorage
 import dev.ajithgoveas.kindex.core.io.MPFile
@@ -19,7 +20,7 @@ import okio.FileSystem
 import okio.Path.Companion.toPath
 import okio.SYSTEM
 
-class ExportCommand : CliktCommand(name = "export", help = "Export knowledge graph into hierarchical architecture flow diagrams (Mermaid, DOT, JSON)") {
+class ExportCommand : CliktCommand(name = "export", help = "Export knowledge graph into clean, uncluttered architectural flow diagrams (Mermaid, DOT, JSON)") {
     private val granularity by option("-g", "--granularity", help = "Granularity: flow (default hierarchical flow), file, package, symbol").default("flow")
     private val format by option("-f", "--format", help = "Export format: mermaid, dot, json").default("mermaid")
     private val relationOpt by option("-r", "--relation", help = "Relation filter: all, calls, imports, extends").default("all")
@@ -46,6 +47,13 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
             return
         }
 
+        // Filter out noisy string literal targets or CONTAINS edges in high level flow exports
+        rawEdges = rawEdges.filter { edge ->
+            !edge.targetId.contains(" = \"") &&
+            !edge.targetId.contains("help =") &&
+            !edge.sourceId.contains(" = \"")
+        }
+
         // Apply Relation Filter
         if (relationOpt.lowercase() != "all") {
             val filterRel = relationOpt.uppercase()
@@ -63,7 +71,6 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
         }
 
         val targetFormat = format.lowercase()
-        // Default export output paths go into .kindex/ folder by default for central access
         val defaultFile = when (targetFormat) {
             "dot", "graphviz" -> "$directory/.kindex/graph.dot"
             "json" -> "$directory/.kindex/graph.json"
@@ -75,29 +82,31 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
             "file" -> exportFileLevel(rawEdges, targetFormat)
             "package", "module" -> exportPackageLevel(rawSymbols, rawEdges, targetFormat)
             "symbol" -> exportSymbolLevel(rawSymbols, rawEdges, targetFormat)
-            else -> exportHierarchicalFlow(rawSymbols, rawEdges, targetFormat) // Default: flow/hierarchy
+            else -> exportHierarchicalFlow(rawSymbols, rawEdges, targetFormat)
         }
 
         try {
             FileSystem.SYSTEM.write(targetOutputFile.toPath()) {
                 writeUtf8(content)
             }
-            t.println(green("✓ Successfully exported ${granularity.uppercase()} level graph (${targetFormat.uppercase()}) to $targetOutputFile"))
+            t.println(green("✓ Successfully exported ${granularity.uppercase()} graph (${targetFormat.uppercase()}) to $targetOutputFile"))
         } catch (e: Exception) {
             t.println(red("Error writing export file: ${e.message}"))
         }
     }
 
     private fun exportHierarchicalFlow(symbols: List<Symbol>, edges: List<Edge>, format: String): String {
-        val classifiedNodes = ArchitectureFlowAnalyzer.classifyNodes(symbols, edges)
-        val fileEdges = ArchitectureFlowAnalyzer.aggregateByFile(edges)
+        // Filter edges to calls, imports, extends for a clean architectural flow
+        val flowEdges = edges.filter { it.relation != RelationType.CONTAINS }
+        val classifiedNodes = ArchitectureFlowAnalyzer.classifyNodes(symbols, flowEdges)
+        val fileEdges = ArchitectureFlowAnalyzer.aggregateByFile(flowEdges)
 
         return when (format) {
             "dot", "graphviz" -> {
                 val sb = StringBuilder("digraph KIndexFlowGraph {\n")
                 sb.append("    rankdir=TB;\n")
                 sb.append("    compound=true;\n")
-                sb.append("    node [shape=box, style=\"filled,rounded\", fontname=\"Helvetica\", color=\"#495057\"];\n")
+                sb.append("    node [shape=box, style=\"filled,rounded\", fontname=\"Helvetica\", color=\"#495057\", fillcolor=\"#F8F9FA\"];\n")
                 sb.append("    edge [fontname=\"Helvetica\", fontsize=9, color=\"#6C757D\"];\n\n")
 
                 val layerGroups = classifiedNodes.groupBy { it.layer }
@@ -106,24 +115,28 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
                     sb.append("    subgraph cluster_${layer.name} {\n")
                     sb.append("        label=\"${layer.emoji} ${layer.displayName}\";\n")
                     sb.append("        style=dashed; color=\"#6C757D\";\n")
-                    val files = nodes.map { it.id.substringAfterLast("/").substringAfterLast("\\").substringBefore("#") }.distinct()
-                    for (f in files.take(8)) {
+                    val fileNames = nodes.map { cleanDisplayName(it.id) }.distinct()
+                    for (f in fileNames.take(8)) {
                         val safeId = f.replace(Regex("[^a-zA-Z0-9_]"), "_")
                         sb.append("        \"$safeId\" [label=\"$f\"];\n")
                     }
                     sb.append("    }\n\n")
                 }
 
-                for (e in fileEdges.take(100)) {
-                    val src = e.source.replace(Regex("[^a-zA-Z0-9_]"), "_")
-                    val tgt = e.target.replace(Regex("[^a-zA-Z0-9_]"), "_")
-                    sb.append("    \"$src\" -> \"$tgt\" [label=\"${e.relation} (${e.weight})\"];\n")
+                val seenEdges = mutableSetOf<String>()
+                for (e in fileEdges.take(40)) {
+                    val src = cleanDisplayName(e.source).replace(Regex("[^a-zA-Z0-9_]"), "_")
+                    val tgt = cleanDisplayName(e.target).replace(Regex("[^a-zA-Z0-9_]"), "_")
+                    if (src != tgt) {
+                        val line = "    \"$src\" -> \"$tgt\" [label=\"${e.relation}\"];\n"
+                        if (seenEdges.add(line)) sb.append(line)
+                    }
                 }
                 sb.append("}\n").toString()
             }
             "json" -> exportJsonNodesAndEdges(classifiedNodes, fileEdges)
             else -> {
-                // Balanced vertical layout for Mermaid TD
+                // Crisp, uncluttered Mermaid TD graph
                 val sb = StringBuilder("graph TD\n")
                 sb.append("    classDef entry fill:#457b9d,color:#fff,stroke:#1d3557,stroke-width:2px;\n")
                 sb.append("    classDef service fill:#2a9d8f,color:#fff,stroke:#264653,stroke-width:2px;\n")
@@ -135,7 +148,7 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
                     val nodes = layerGroups[layer] ?: continue
                     val layerTitle = "${layer.emoji} ${layer.displayName}"
                     sb.append("    subgraph ${layer.name}[\"$layerTitle\"]\n")
-                    val files = nodes.map { it.id.substringAfterLast("/").substringAfterLast("\\").substringBefore("#") }.distinct()
+                    val files = nodes.map { cleanDisplayName(it.id) }.distinct()
                     val styleClass = when(layer) {
                         ArchitecturalLayer.ENTRY_POINTS -> "entry"
                         ArchitecturalLayer.SERVICES -> "service"
@@ -149,10 +162,14 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
                     sb.append("    end\n\n")
                 }
 
-                for (e in fileEdges.take(100)) {
-                    val src = e.source.replace(Regex("[^a-zA-Z0-9_]"), "_")
-                    val tgt = e.target.replace(Regex("[^a-zA-Z0-9_]"), "_")
-                    sb.append("    $src -->|${e.relation} ${e.weight}x| $tgt\n")
+                val seenEdges = mutableSetOf<String>()
+                for (e in fileEdges.take(40)) {
+                    val src = cleanDisplayName(e.source).replace(Regex("[^a-zA-Z0-9_]"), "_")
+                    val tgt = cleanDisplayName(e.target).replace(Regex("[^a-zA-Z0-9_]"), "_")
+                    if (src != tgt) {
+                        val line = "    $src -->|${e.relation}| $tgt\n"
+                        if (seenEdges.add(line)) sb.append(line)
+                    }
                 }
                 sb.toString()
             }
@@ -164,26 +181,34 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
         return when (format) {
             "dot", "graphviz" -> {
                 val sb = StringBuilder("digraph FileWiringGraph {\n    rankdir=LR;\n    node [shape=box, style=\"filled,rounded\", fillcolor=\"#E9ECEF\", fontname=\"Helvetica\"];\n")
-                for (e in fileEdges) {
-                    sb.append("    \"${e.source}\" -> \"${e.target}\" [label=\"${e.relation} (${e.weight})\"];\n")
+                val seen = mutableSetOf<String>()
+                for (e in fileEdges.take(50)) {
+                    val src = cleanDisplayName(e.source)
+                    val tgt = cleanDisplayName(e.target)
+                    val line = "    \"$src\" -> \"$tgt\" [label=\"${e.relation} (${e.weight})\"];\n"
+                    if (seen.add(line)) sb.append(line)
                 }
                 sb.append("}\n").toString()
             }
             "json" -> {
-                val nodes = fileEdges.flatMap { listOf(it.source, it.target) }.distinct().map {
+                val nodes = fileEdges.flatMap { listOf(cleanDisplayName(it.source), cleanDisplayName(it.target)) }.distinct().map {
                     """    { "id": "$it", "type": "FILE" }"""
                 }
                 val links = fileEdges.map {
-                    """    { "source": "${it.source}", "target": "${it.target}", "relation": "${it.relation}", "weight": ${it.weight} }"""
+                    """    { "source": "${cleanDisplayName(it.source)}", "target": "${cleanDisplayName(it.target)}", "relation": "${it.relation}", "weight": ${it.weight} }"""
                 }
                 "{\n  \"nodes\": [\n${nodes.joinToString(",\n")}\n  ],\n  \"links\": [\n${links.joinToString(",\n")}\n  ]\n}"
             }
             else -> {
                 val sb = StringBuilder("graph LR\n")
-                for (e in fileEdges) {
-                    val src = e.source.replace(Regex("[^a-zA-Z0-9_]"), "_")
-                    val tgt = e.target.replace(Regex("[^a-zA-Z0-9_]"), "_")
-                    sb.append("    $src[\"${e.source}\"] -->|${e.relation} ${e.weight}x| $tgt[\"${e.target}\"]\n")
+                val seen = mutableSetOf<String>()
+                for (e in fileEdges.take(50)) {
+                    val srcName = cleanDisplayName(e.source)
+                    val tgtName = cleanDisplayName(e.target)
+                    val src = srcName.replace(Regex("[^a-zA-Z0-9_]"), "_")
+                    val tgt = tgtName.replace(Regex("[^a-zA-Z0-9_]"), "_")
+                    val line = "    $src[\"$srcName\"] -->|${e.relation} ${e.weight}x| $tgt[\"$tgtName\"]\n"
+                    if (seen.add(line)) sb.append(line)
                 }
                 sb.toString()
             }
@@ -195,8 +220,10 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
         return when (format) {
             "dot", "graphviz" -> {
                 val sb = StringBuilder("digraph PackageWiringGraph {\n    rankdir=LR;\n    node [shape=box, style=\"filled,rounded\", fillcolor=\"#D8F3DC\", fontname=\"Helvetica\"];\n")
+                val seen = mutableSetOf<String>()
                 for (e in pkgEdges) {
-                    sb.append("    \"${e.source}\" -> \"${e.target}\" [label=\"${e.relation} (${e.weight})\"];\n")
+                    val line = "    \"${e.source}\" -> \"${e.target}\" [label=\"${e.relation} (${e.weight})\"];\n"
+                    if (seen.add(line)) sb.append(line)
                 }
                 sb.append("}\n").toString()
             }
@@ -211,10 +238,12 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
             }
             else -> {
                 val sb = StringBuilder("graph LR\n")
+                val seen = mutableSetOf<String>()
                 for (e in pkgEdges) {
                     val src = e.source.replace(Regex("[^a-zA-Z0-9_]"), "_")
                     val tgt = e.target.replace(Regex("[^a-zA-Z0-9_]"), "_")
-                    sb.append("    $src[\"${e.source}\"] -->|${e.relation} ${e.weight}x| $tgt[\"${e.target}\"]\n")
+                    val line = "    $src[\"${e.source}\"] -->|${e.relation} ${e.weight}x| $tgt[\"${e.target}\"]\n"
+                    if (seen.add(line)) sb.append(line)
                 }
                 sb.toString()
             }
@@ -222,37 +251,48 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
     }
 
     private fun exportSymbolLevel(symbols: List<Symbol>, edges: List<Edge>, format: String): String {
+        val cleanEdges = edges.filter { it.relation != RelationType.CONTAINS }
         return when (format) {
             "dot", "graphviz" -> {
                 val sb = StringBuilder("digraph SymbolWiringGraph {\n    rankdir=LR;\n    node [shape=box, fontname=\"Helvetica\"];\n")
-                for (e in edges.take(200)) {
-                    val src = e.sourceId.substringAfterLast("/").substringAfterLast("\\").replace("\"", "\\\"")
-                    val tgt = e.targetId.substringAfterLast("/").substringAfterLast("\\").replace("\"", "\\\"")
-                    sb.append("    \"$src\" -> \"$tgt\" [label=\"${e.relation.name}\"];\n")
+                val seen = mutableSetOf<String>()
+                for (e in cleanEdges.take(60)) {
+                    val src = cleanDisplayName(e.sourceId)
+                    val tgt = cleanDisplayName(e.targetId)
+                    val line = "    \"$src\" -> \"$tgt\" [label=\"${e.relation.name}\"];\n"
+                    if (seen.add(line)) sb.append(line)
                 }
                 sb.append("}\n").toString()
             }
             "json" -> {
                 val nodes = symbols.map {
-                    """    { "id": "${it.id.replace("\"", "\\\"")}", "name": "${it.name}", "type": "${it.type.name}" }"""
+                    """    { "id": "${cleanDisplayName(it.id)}", "name": "${it.name}", "type": "${it.type.name}" }"""
                 }
-                val links = edges.take(250).map {
-                    """    { "source": "${it.sourceId.replace("\"", "\\\"")}", "target": "${it.targetId.replace("\"", "\\\"")}", "relation": "${it.relation.name}" }"""
+                val links = cleanEdges.take(100).map {
+                    """    { "source": "${cleanDisplayName(it.sourceId)}", "target": "${cleanDisplayName(it.targetId)}", "relation": "${it.relation.name}" }"""
                 }
                 "{\n  \"nodes\": [\n${nodes.joinToString(",\n")}\n  ],\n  \"links\": [\n${links.joinToString(",\n")}\n  ]\n}"
             }
             else -> {
                 val sb = StringBuilder("graph TD\n")
-                for (e in edges.take(200)) {
-                    val rawSrc = e.sourceId.substringAfterLast("/").substringAfterLast("\\")
-                    val rawTgt = e.targetId.substringAfterLast("/").substringAfterLast("\\")
+                val seen = mutableSetOf<String>()
+                for (e in cleanEdges.take(60)) {
+                    val rawSrc = cleanDisplayName(e.sourceId)
+                    val rawTgt = cleanDisplayName(e.targetId)
                     val src = rawSrc.replace(Regex("[^a-zA-Z0-9_]"), "_")
                     val tgt = rawTgt.replace(Regex("[^a-zA-Z0-9_]"), "_")
-                    sb.append("    $src[\"$rawSrc\"] -->|${e.relation.name}| $tgt[\"$rawTgt\"]\n")
+                    val line = "    $src[\"$rawSrc\"] -->|${e.relation.name}| $tgt[\"$rawTgt\"]\n"
+                    if (seen.add(line)) sb.append(line)
                 }
                 sb.toString()
             }
         }
+    }
+
+    private fun cleanDisplayName(raw: String): String {
+        val path = raw.substringBefore("#")
+        val shortName = path.substringAfterLast("/").substringAfterLast("\\")
+        return if (shortName.contains(".")) shortName.substringAfterLast(".") else shortName
     }
 
     private fun exportJsonNodesAndEdges(
@@ -260,10 +300,10 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
         fileEdges: List<dev.ajithgoveas.kindex.core.analysis.AggregatedEdge>
     ): String {
         val nodesJson = nodes.map {
-            """    { "id": "${it.id.replace("\"", "\\\"")}", "name": "${it.name}", "layer": "${it.layer.name}", "type": "${it.symbolType}" }"""
+            """    { "id": "${cleanDisplayName(it.id)}", "name": "${it.name}", "layer": "${it.layer.name}", "type": "${it.symbolType}" }"""
         }
         val linksJson = fileEdges.map {
-            """    { "source": "${it.source}", "target": "${it.target}", "relation": "${it.relation}", "weight": ${it.weight} }"""
+            """    { "source": "${cleanDisplayName(it.source)}", "target": "${cleanDisplayName(it.target)}", "relation": "${it.relation}", "weight": ${it.weight} }"""
         }
         return "{\n  \"nodes\": [\n${nodesJson.joinToString(",\n")}\n  ],\n  \"links\": [\n${linksJson.joinToString(",\n")}\n  ]\n}"
     }
