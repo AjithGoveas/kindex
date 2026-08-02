@@ -47,7 +47,7 @@ fun walkFiles(dir: MPFile): List<MPFile> {
     val files = dir.listFiles() ?: return emptyList()
     for (file in files) {
         val path = file.path.replace('\\', '/')
-        if (path.contains("/build/") || path.contains("/.gradle/") || path.contains("/.kindex/")) {
+        if (path.contains("/build/") || path.contains("/.gradle/") || path.contains("/.kindex/") || path.contains("/nativeInterop/") || path.contains("/cinterop/") || path.contains("/dist/")) {
             continue
         }
         if (file.isDirectory) {
@@ -136,8 +136,12 @@ class ScanCommand : CliktCommand(name = "scan", help = "Scan a repository direct
             filesToScan.forEachIndexed { index, file ->
                 val displayIndex = index + 1
                 if (!quiet) t.print("\r${cyan("[")}$displayIndex/${filesToScan.size}${cyan("]")} Processing: ${file.name.take(30).padEnd(30)}")
-                val ext = extractors.first { it.supports(file) }
-                parseResults.add(ext.extract(file))
+                try {
+                    val ext = extractors.first { it.supports(file) }
+                    parseResults.add(ext.extract(file))
+                } catch (e: Throwable) {
+                    // Continue scanning remaining files
+                }
             }
             if (!quiet) t.print("\r✓ AST parsing complete.                                                        \n")
         }

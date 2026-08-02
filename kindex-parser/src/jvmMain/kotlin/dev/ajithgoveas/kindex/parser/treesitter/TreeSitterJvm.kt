@@ -18,6 +18,9 @@ actual typealias TSNode = org.treesitter.TSNode
 actual typealias TSPoint = org.treesitter.TSPoint
 actual typealias TSQuery = org.treesitter.TSQuery
 
+fun TSNode.isNull(): Boolean = this.isNull
+fun TSQuery.isValid(): Boolean = true
+
 actual class TSQueryCursor actual constructor() {
     private val delegate = org.treesitter.TSQueryCursor()
 

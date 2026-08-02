@@ -19,8 +19,8 @@ class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
 
         val queryStr = if (isKotlin) {
             """
-            (package_header (identifier) @package)
-            (import_header (identifier) @import)
+            (package_header) @package
+            (import_header) @import
             (class_declaration (type_identifier) @class_name) @class_node
             (function_declaration (simple_identifier) @function_name) @function_node
             (call_expression (simple_identifier) @call_name) @call_node

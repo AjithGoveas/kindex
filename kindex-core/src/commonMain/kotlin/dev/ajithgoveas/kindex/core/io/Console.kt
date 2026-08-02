@@ -16,8 +16,7 @@ sealed class KeyEvent {
     object Unknown  : KeyEvent()
 }
 
-/**
- * Read a single keystroke from stdin without requiring Enter.
+/** Read a single keystroke from stdin without requiring Enter.
  * Parses ANSI escape sequences for arrow keys.
  */
 expect fun readKey(): KeyEvent
@@ -30,3 +29,6 @@ expect fun enableRawMode()
 
 /** Restore terminal to its original state (flush VT flags set in enableRawMode). */
 expect fun disableRawMode()
+
+/** Returns Pair(columns, rows) of the current terminal window, or (120, 30) as fallback. */
+expect fun getTerminalSize(): Pair<Int, Int>

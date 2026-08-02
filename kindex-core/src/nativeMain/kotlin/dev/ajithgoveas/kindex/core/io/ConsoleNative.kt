@@ -4,6 +4,14 @@ package dev.ajithgoveas.kindex.core.io
 
 import conio._getch
 import conio.enableVT100
+import conio.queryTerminalSize
+import kotlinx.cinterop.IntVar
+import kotlinx.cinterop.alloc
+import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.ptr
+import kotlinx.cinterop.toKString
+import kotlinx.cinterop.value
+import platform.posix.getenv
 
 actual fun enableRawMode() {
     // Enable VT100/ANSI escape code processing on Windows 10+ console
@@ -35,3 +43,26 @@ actual fun readKey(): KeyEvent {
         else    -> if (b in 32..126) KeyEvent.Character(b.toChar()) else KeyEvent.Unknown
     }
 }
+
+@OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+actual fun getTerminalSize(): Pair<Int, Int> {
+    val envW = getenv("COLUMNS")?.toKString()?.toIntOrNull()
+    val envH = getenv("LINES")?.toKString()?.toIntOrNull()
+    if (envW != null && envH != null) return Pair(envW, envH)
+
+    // Query the real console window via Win32 API (COLUMNS/LINES are usually
+    // unset on Windows, so the hardcoded fallback is a poor second choice).
+    return try {
+        memScoped {
+            val cols = alloc<IntVar>()
+            val rows = alloc<IntVar>()
+            if (queryTerminalSize(cols.ptr, rows.ptr) == 1) {
+                Pair(cols.value.coerceAtLeast(80), rows.value.coerceAtLeast(20))
+            } else fallbackSize()
+        }
+    } catch (_: Throwable) {
+        fallbackSize()
+    }
+}
+
+private fun fallbackSize(): Pair<Int, Int> = Pair(120, 30)

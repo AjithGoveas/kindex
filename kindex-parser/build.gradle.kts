@@ -25,14 +25,14 @@ kotlin {
 
     applyDefaultHierarchyTemplate()
 
-//    nativeTargets.forEach { target ->
-//        target.compilations.getByName("main") {
-//            val treesitter by cinterops.creating {
-//                defFile(project.file("src/nativeInterop/cinterop/treesitter.def"))
-//                includeDirs(project.file("src/nativeInterop/cinterop/include"))
-//            }
-//        }
-//    }
+    nativeTargets.forEach { target ->
+        target.compilations.getByName("main") {
+            val treesitter by cinterops.creating {
+                defFile(project.file("src/nativeInterop/cinterop/treesitter.def"))
+                includeDirs(project.file("src/nativeInterop/cinterop/include"))
+            }
+        }
+    }
 
     sourceSets {
         commonMain.dependencies {

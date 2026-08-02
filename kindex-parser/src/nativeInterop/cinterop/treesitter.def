@@ -1,0 +1,140 @@
+headers = tree_sitter/api.h languages.h
+compilerOpts = -Iinclude -DNDEBUG
+staticLibraries = treesitter.lib
+libraryPaths = src/nativeInterop/cinterop/lib
+package = treesitter
+
+---
+
+#include <stdlib.h>
+#include <stdint.h>
+#include <string.h>
+
+/* ---- Parser ---- */
+static void *tsx_parser_new(void) {
+    return (void *)ts_parser_new();
+}
+static int tsx_parser_set_language(void *p, const void *lang) {
+    if (!p || !lang) return 0;
+    return ts_parser_set_language((TSParser *)p, (const TSLanguage *)lang) ? 1 : 0;
+}
+static void *tsx_parse_string(void *p, const char *src) {
+    if (!p || !src) return NULL;
+    return (void *)ts_parser_parse_string((TSParser *)p, NULL, src, (uint32_t)strlen(src));
+}
+static void tsx_parser_free(void *p) {
+    if (p) ts_parser_delete((TSParser *)p);
+}
+static void tsx_tree_free(void *tree) {
+    if (tree) ts_tree_delete((TSTree *)tree);
+}
+
+/* ---- Tree / Node (nodes are heap-copied TSNode handles = void*) ---- */
+static void *tsx_tree_root(void *tree) {
+    if (!tree) return NULL;
+    TSNode n = ts_tree_root_node((TSTree *)tree);
+    TSNode *copy = (TSNode *)malloc(sizeof(TSNode));
+    if (copy) *copy = n;
+    return copy;
+}
+static int tsx_node_null(void *nh) {
+    if (!nh) return 1;
+    return ts_node_is_null(*(TSNode *)nh) ? 1 : 0;
+}
+static void *tsx_node_parent(void *nh) {
+    if (!nh || ts_node_is_null(*(TSNode *)nh)) return NULL;
+    TSNode *copy = (TSNode *)malloc(sizeof(TSNode));
+    if (copy) *copy = ts_node_parent(*(TSNode *)nh);
+    return copy;
+}
+static void *tsx_node_child(void *nh, unsigned index) {
+    if (!nh || ts_node_is_null(*(TSNode *)nh)) return NULL;
+    TSNode *copy = (TSNode *)malloc(sizeof(TSNode));
+    if (copy) *copy = ts_node_child(*(TSNode *)nh, index);
+    return copy;
+}
+static unsigned tsx_node_child_count(void *nh) {
+    if (!nh || ts_node_is_null(*(TSNode *)nh)) return 0;
+    return (unsigned)ts_node_child_count(*(TSNode *)nh);
+}
+static const char *tsx_node_type(void *nh) {
+    if (!nh || ts_node_is_null(*(TSNode *)nh)) return "";
+    return ts_node_type(*(TSNode *)nh);
+}
+static unsigned tsx_node_start_byte(void *nh) {
+    if (!nh || ts_node_is_null(*(TSNode *)nh)) return 0;
+    return (unsigned)ts_node_start_byte(*(TSNode *)nh);
+}
+static unsigned tsx_node_end_byte(void *nh) {
+    if (!nh || ts_node_is_null(*(TSNode *)nh)) return 0;
+    return (unsigned)ts_node_end_byte(*(TSNode *)nh);
+}
+static unsigned tsx_node_start_row(void *nh) {
+    if (!nh || ts_node_is_null(*(TSNode *)nh)) return 0;
+    return ts_node_start_point(*(TSNode *)nh).row;
+}
+static unsigned tsx_node_end_row(void *nh) {
+    if (!nh || ts_node_is_null(*(TSNode *)nh)) return 0;
+    return ts_node_end_point(*(TSNode *)nh).row;
+}
+static void tsx_node_free(void *nh) { if (nh) free(nh); }
+
+/* ---- Query ---- */
+static void *tsx_query_new(const void *lang, const char *src) {
+    if (!lang || !src) return NULL;
+    uint32_t errOff = 0, errType = 0;
+    TSQuery *q = ts_query_new((const TSLanguage *)lang, src, (uint32_t)strlen(src), &errOff, &errType);
+    (void)errOff; (void)errType;
+    return q;
+}
+static const char *tsx_query_capture_name(void *q, unsigned id) {
+    if (!q) return "";
+    uint32_t len = 0;
+    return ts_query_capture_name_for_id((TSQuery *)q, id, &len);
+}
+static void *tsx_cursor_new(void) { return ts_query_cursor_new(); }
+static void tsx_cursor_exec(void *c, void *q, void *node) {
+    if (!c || !q || !node || ts_node_is_null(*(TSNode *)node)) return;
+    ts_query_cursor_exec((TSQueryCursor *)c, (TSQuery *)q, *(TSNode *)node);
+}
+static void *tsx_cursor_next_match(void *c) {
+    TSQueryMatch m;
+    if (!c) return NULL;
+    if (ts_query_cursor_next_match((TSQueryCursor *)c, &m)) {
+        TSQueryMatch *copy = (TSQueryMatch *)malloc(sizeof(TSQueryMatch));
+        if (copy) {
+            size_t capBytes = (size_t)m.capture_count * sizeof(TSQueryCapture);
+            TSQueryCapture *capCopy = (TSQueryCapture *)malloc(capBytes);
+            TSQueryMatch n;
+            if (capCopy && capBytes > 0) memcpy(capCopy, m.captures, capBytes);
+            n.id = m.id; n.pattern_index = m.pattern_index; n.capture_count = m.capture_count;
+            n.captures = capCopy ? capCopy : m.captures;
+            *copy = n;
+        }
+        return copy;
+    }
+    return NULL;
+}
+static unsigned tsx_match_capture_count(void *m) {
+    if (!m) return 0;
+    return ((TSQueryMatch *)m)->capture_count;
+}
+static void *tsx_match_capture_node(void *m, unsigned i) {
+    if (!m) return NULL;
+    const TSQueryCapture *c = &((TSQueryMatch *)m)->captures[i];
+    TSNode *copy = (TSNode *)malloc(sizeof(TSNode));
+    if (copy) *copy = c->node;
+    return copy;
+}
+static unsigned tsx_match_capture_index(void *m, unsigned i) {
+    if (!m) return 0;
+    return ((TSQueryMatch *)m)->captures[i].index;
+}
+static void tsx_match_free(void *m) {
+    if (!m) return;
+    TSQueryMatch *M = (TSQueryMatch *)m;
+    if (M->captures) free((void *)M->captures);
+    free(M);
+}
+static void tsx_query_free(void *q) { if (q) ts_query_delete((TSQuery *)q); }
+static void tsx_cursor_free(void *c) { if (c) ts_query_cursor_delete((TSQueryCursor *)c); }

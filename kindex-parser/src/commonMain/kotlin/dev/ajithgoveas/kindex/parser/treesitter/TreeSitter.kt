@@ -23,6 +23,7 @@ expect class TSTree {
 }
 
 expect class TSNode {
+    fun isNull(): Boolean
     fun getParent(): TSNode?
     fun getChildCount(): Int
     fun getChild(index: Int): TSNode?
@@ -38,6 +39,7 @@ expect class TSPoint {
 }
 
 expect class TSQuery(language: TSLanguage, queryStr: String) {
+    fun isValid(): Boolean
     fun getCaptureNameForId(id: Int): String
 }
 

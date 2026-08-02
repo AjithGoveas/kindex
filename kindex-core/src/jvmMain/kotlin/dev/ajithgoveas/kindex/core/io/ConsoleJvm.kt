@@ -43,3 +43,9 @@ actual fun disableRawMode() {
             .waitFor()
     } catch (_: Exception) { }
 }
+
+actual fun getTerminalSize(): Pair<Int, Int> {
+    val w = System.getenv("COLUMNS")?.toIntOrNull() ?: 120
+    val h = System.getenv("LINES")?.toIntOrNull()   ?: 30
+    return Pair(w.coerceAtLeast(80), h.coerceAtLeast(20))
+}

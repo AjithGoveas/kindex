@@ -96,3 +96,7 @@ Desktop.ini
 *.mmd
 *.dot
 *.json
+# ==========================================
+# Scratch / toolchain builds (not part of VCS)
+# ==========================================
+/tsbuild/

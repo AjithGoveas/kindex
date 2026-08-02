@@ -11,3 +11,15 @@ static inline void enableVT100() {
     if (!GetConsoleMode(hOut, &mode)) return;
     SetConsoleMode(hOut, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
 }
+
+// Query the visible console window size in character cells.
+// Returns 1 on success and fills cols/rows, 0 on failure.
+static inline int queryTerminalSize(int* cols, int* rows) {
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (hOut == INVALID_HANDLE_VALUE) return 0;
+    CONSOLE_SCREEN_BUFFER_INFO info;
+    if (!GetConsoleScreenBufferInfo(hOut, &info)) return 0;
+    *cols = info.srWindow.Right - info.srWindow.Left + 1;
+    *rows = info.srWindow.Bottom - info.srWindow.Top + 1;
+    return 1;
+}

@@ -8,7 +8,8 @@ object RepositoryGuardrail {
         val rootCanonical = repoRoot.absolutePath.replace('\\', '/').trimEnd('/')
         val targetCanonical = target.absolutePath.replace('\\', '/').trimEnd('/')
 
-        return targetCanonical == rootCanonical || targetCanonical.startsWith("$rootCanonical/")
+        return targetCanonical.equals(rootCanonical, ignoreCase = true) || 
+               targetCanonical.startsWith("$rootCanonical/", ignoreCase = true)
     }
 
     fun assertWithinRepository(target: MPFile, repoRoot: MPFile) {

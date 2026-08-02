@@ -11,579 +11,442 @@ import dev.ajithgoveas.kindex.core.io.RepositoryGuardrail
 import dev.ajithgoveas.kindex.core.io.RepositoryRootResolver
 import dev.ajithgoveas.kindex.core.io.disableRawMode
 import dev.ajithgoveas.kindex.core.io.enableRawMode
+import dev.ajithgoveas.kindex.core.io.getTerminalSize
 import dev.ajithgoveas.kindex.core.io.readKey
 import dev.ajithgoveas.kindex.core.model.RelationType
 import dev.ajithgoveas.kindex.core.model.Symbol
 import dev.ajithgoveas.kindex.core.model.SymbolType
 import dev.ajithgoveas.kindex.storage.IndexStorage
+import kotlin.enums.enumEntries
 
-// ─── ANSI escape helpers ────────────────────────────────────────────────────
+// ─── ANSI escape helpers ─────────────────────────────────────────────────────
 
-private const val ESC = "\u001B"
-private const val RESET = "$ESC[0m"
-private const val BOLD = "$ESC[1m"
-private const val DIM = "$ESC[2m"
-private const val REVERSE = "$ESC[7m"
-private const val CLEAR = "$ESC[2J$ESC[H"
-private const val ALT_SCREEN_ON  = "$ESC[?1049h"
-private const val ALT_SCREEN_OFF = "$ESC[?1049l"
-private const val HIDE_CURSOR = "$ESC[?25l"
-private const val SHOW_CURSOR = "$ESC[?25h"
+private const val ESC     = "\u001B"
+private const val RESET   = "$ESC[0m"
+private const val BOLD    = "$ESC[1m"
+private const val DIM     = "$ESC[2m"
+private const val CLEAR   = "$ESC[2J$ESC[H"
+private const val ALT_ON  = "$ESC[?1049h"
+private const val ALT_OFF = "$ESC[?1049l"
+private const val HIDE    = "$ESC[?25l"
+private const val SHOW    = "$ESC[?25h"
 
-private fun fg(r: Int, g: Int, b: Int) = "$ESC[38;2;${r};${g};${b}m"
-private fun bg(r: Int, g: Int, b: Int) = "$ESC[48;2;${r};${g};${b}m"
-private fun moveTo(row: Int, col: Int) = "$ESC[${row};${col}H"
-private fun clearLine() = "$ESC[2K"
+// ESC[0K — clear from cursor position to end of line (PRESERVES chars to the left)
+private const val CLR_EOL = "$ESC[0K"
 
-// Design palette
-private val ACCENT   = fg(139, 92, 246)   // Purple-400
-private val ACCENT2  = fg(167, 139, 250)  // Purple-300
-private val SUCCESS  = fg(52, 211, 153)   // Emerald-400
-private val WARNING  = fg(251, 191, 36)   // Amber-400
-private val MUTED    = fg(107, 114, 128)  // Gray-500
-private val BRIGHT   = fg(243, 244, 246)  // Gray-100
-private val RED      = fg(248, 113, 113)  // Red-400
-private val CYAN     = fg(34, 211, 238)   // Cyan-400
-private val BG_PANEL = bg(17, 24, 39)     // Gray-900
-private val BG_SEL   = bg(55, 48, 163)    // Indigo-800
-private val BG_TITLE = bg(31, 41, 55)     // Gray-800
+private fun fg(r: Int, g: Int, b: Int) = "$ESC[38;2;$r;$g;${b}m"
+private fun bg(r: Int, g: Int, b: Int) = "$ESC[48;2;$r;$g;${b}m"
+private fun at(row: Int, col: Int)     = "$ESC[${row};${col}H"
 
-// ─── Menu entries ───────────────────────────────────────────────────────────
+// Colour palette
+private val C_ACCENT   = fg(139,  92, 246)  // purple
+private val C_ACCENT2  = fg(167, 139, 250)  // lavender
+private val C_SUCCESS  = fg( 52, 211, 153)  // emerald
+private val C_WARN     = fg(251, 191,  36)  // amber
+private val C_MUTED    = fg(107, 114, 128)  // grey-500
+private val C_BRIGHT   = fg(243, 244, 246)  // grey-100
+private val C_RED      = fg(248, 113, 113)  // red-400
+private val C_CYAN     = fg( 34, 211, 238)  // cyan
+private val BG_TITLE   = bg( 17,  24,  39)  // grey-900
+private val BG_SEL     = bg( 55,  48, 163)  // indigo-800 (selection highlight)
 
-private data class MenuItem(val key: String, val label: String, val desc: String, val icon: String)
+// ─── Layout constants ─────────────────────────────────────────────────────────
+
+private const val MENU_W   = 24   // sidebar width in columns
+private const val HEADER_H = 3    // header rows
+private const val FOOTER_H = 2    // footer rows
+private const val DIV_COL  = MENU_W + 1
+private const val CONT_COL = MENU_W + 3
+
+// ─── Menu definitions ─────────────────────────────────────────────────────────
+
+private data class MenuItem(val num: String, val label: String, val desc: String)
 
 private val MENU_ITEMS = listOf(
-    MenuItem("1", "Search",    "Fuzzy symbol search",             "🔍"),
-    MenuItem("2", "Deps",      "Dependency & call graph",         "🔗"),
-    MenuItem("3", "Stats",     "Repository metrics",              "📊"),
-    MenuItem("4", "Flow",      "Architectural layers",            "🏗️"),
-    MenuItem("5", "Export",    "Export Mermaid diagram",          "📤"),
-    MenuItem("6", "Dead Code", "Unreferenced code detection",     "💀"),
+    MenuItem("1", "Search",    "Fuzzy symbol search"),
+    MenuItem("2", "Deps",      "Call graph & references"),
+    MenuItem("3", "Stats",     "Repository metrics"),
+    MenuItem("4", "Flow",      "Architectural layers"),
+    MenuItem("5", "Export",    "Export Mermaid diagram"),
+    MenuItem("6", "Dead Code", "Unreferenced symbols"),
 )
 
-// ─── Screen rendering ────────────────────────────────────────────────────────
+private enum class TuiScreen { Menu, Input, Content }
 
-private object Screen {
-    private val sb = StringBuilder()
+// ─── Buffered output ──────────────────────────────────────────────────────────
 
-    fun begin() { sb.clear() }
+private val buf = StringBuilder(8192)
+private fun w(s: String)  { buf.append(s) }
+private fun flush()       { print(buf); buf.clear() }
 
-    fun write(s: String) { sb.append(s) }
-
-    fun writeln(s: String = "") { sb.append(s).append('\n') }
-
-    fun flush() {
-        print(sb.toString())
-        sb.clear()
-    }
-
-    fun pos(row: Int, col: Int) = write(moveTo(row, col))
-
-    fun box(row: Int, col: Int, h: Int, w: Int, title: String = "") {
-        val top = "╭" + "─".repeat(w - 2) + "╮"
-        val mid = "│" + " ".repeat(w - 2) + "│"
-        val bot = "╰" + "─".repeat(w - 2) + "╯"
-
-        write(moveTo(row, col))
-        if (title.isNotEmpty()) {
-            val t = " $title "
-            val fill = w - 2 - t.length
-            val left = fill / 2
-            val right = fill - left
-            write("${MUTED}╭${"─".repeat(left)}${ACCENT2}${BOLD}$t${RESET}${MUTED}${"─".repeat(right)}╮${RESET}")
-        } else {
-            write("${MUTED}$top${RESET}")
-        }
-        for (r in 1 until h - 1) {
-            write(moveTo(row + r, col))
-            write("${MUTED}$mid${RESET}")
-        }
-        write(moveTo(row + h - 1, col))
-        write("${MUTED}$bot${RESET}")
-    }
-}
-
-// ─── Full-screen TUI renderer ────────────────────────────────────────────────
-
-private const val MENU_W  = 26
-private const val HEADER_H = 4
-private const val FOOTER_H = 3
+// ─── The command ──────────────────────────────────────────────────────────────
 
 class InteractiveCommand : CliktCommand(
-    name = "interactive",
-    help = "Start an interactive KIndex explorer session (default mode)"
+    name        = "interactive",
+    help        = "Start an interactive KIndex explorer session (default mode)"
 ) {
-    private val directoryOpt by option("-d", "--dir", help = "Project directory to analyze").default(".")
+    private val dirOpt by option("-d", "--dir", help = "Project directory to analyze").default(".")
 
     private lateinit var rootDir: MPFile
     private lateinit var storage: IndexStorage
-    private var termW = 120
-    private var termH = 40
-    private val contentW get() = termW - MENU_W - 3
+
+    // Terminal dimensions — read from the platform's terminal query, fall back to safe defaults
+    private val termW: Int get() = getTerminalSize().first
+    private val termH: Int get() = getTerminalSize().second
 
     override fun run() {
-        val currentDir = MPFile(".")
-        rootDir = RepositoryRootResolver.findRepositoryRoot(currentDir)
-        val targetDir = if (directoryOpt == ".") rootDir else MPFile(directoryOpt)
+        val cwd = MPFile(".")
+        rootDir = RepositoryRootResolver.findRepositoryRoot(cwd)
+        val target = if (dirOpt == ".") rootDir else MPFile(dirOpt)
 
         try {
-            RepositoryGuardrail.assertWithinRepository(targetDir, rootDir)
+            RepositoryGuardrail.assertWithinRepository(target, rootDir)
         } catch (e: Exception) {
-            println("${RED}${e.message}${RESET}")
-            return
+            println("$C_RED${e.message}$RESET"); return
         }
 
         val dbFile = MPFile("${rootDir.path}/.kindex/index.db")
         if (!dbFile.exists) {
-            println("${WARNING}⚠  No index found at ${dbFile.path}")
-            println("   Run: kindex scan .${RESET}")
-            return
+            println("${C_WARN}No index found. Run:  kindex scan .$RESET"); return
         }
 
         storage = IndexStorage(dbFile)
         enableRawMode()
+        print(ALT_ON + HIDE + CLEAR)
 
-        // Enter alternate screen buffer and hide cursor
-        print(ALT_SCREEN_ON)
-        print(HIDE_CURSOR)
-        print(CLEAR)
-
-        try {
-            runTui()
-        } finally {
-            // Always restore terminal on exit
-            print(SHOW_CURSOR)
-            print(ALT_SCREEN_OFF)
-            disableRawMode()
-        }
+        try { loop() } finally { print(SHOW + ALT_OFF); disableRawMode() }
     }
 
-    // ─── Main TUI loop ─────────────────────────────────────────────────────
+    // ─── Event loop ───────────────────────────────────────────────────────────
 
-    private fun runTui() {
-        var selectedIdx = 0
-        var screen: TuiScreen = TuiScreen.Menu
-        var contentLines: List<String> = emptyList()
-        var inputBuffer = ""
-        var inputPrompt = ""
-        var inputCallback: (String) -> List<String> = { emptyList() }
+    private fun loop() {
+        var sel   = 0
+        var mode  = TuiScreen.Menu
+        var lines = emptyList<String>()
+        var inBuf = ""
+        var inPmt = ""
+        var inCb: (String) -> List<String> = { emptyList() }
 
         while (true) {
-            drawFrame(selectedIdx, screen, contentLines, inputBuffer, inputPrompt)
+            render(sel, mode, lines, inBuf, inPmt)
+            val k = readKey()
 
-            val key = readKey()
-
-            when (screen) {
-                TuiScreen.Menu -> {
-                    when (key) {
-                        KeyEvent.Up -> selectedIdx = (selectedIdx - 1 + MENU_ITEMS.size) % MENU_ITEMS.size
-                        KeyEvent.Down -> selectedIdx = (selectedIdx + 1) % MENU_ITEMS.size
-                        KeyEvent.Enter -> {
-                            when (selectedIdx) {
-                                0 -> { screen = TuiScreen.Input; inputPrompt = "Search symbol"; inputBuffer = ""; inputCallback = ::doSearch }
-                                1 -> { screen = TuiScreen.Input; inputPrompt = "Symbol name or ID"; inputBuffer = ""; inputCallback = ::doDeps }
-                                2 -> { screen = TuiScreen.Content; contentLines = doStats() }
-                                3 -> { screen = TuiScreen.Content; contentLines = doFlow() }
-                                4 -> { screen = TuiScreen.Content; contentLines = doExport() }
-                                5 -> { screen = TuiScreen.Content; contentLines = doDeadCode() }
-                            }
+            when (mode) {
+                TuiScreen.Menu -> when (k) {
+                    KeyEvent.Up    -> sel = (sel - 1 + MENU_ITEMS.size) % MENU_ITEMS.size
+                    KeyEvent.Down  -> sel = (sel + 1) % MENU_ITEMS.size
+                    KeyEvent.Enter -> { mode = activate(sel).also { if (it == TuiScreen.Input) { inBuf = ""; inPmt = promptFor(sel); inCb = callbackFor(sel) } else lines = dataFor(sel) } }
+                    KeyEvent.Escape -> return
+                    is KeyEvent.Character -> {
+                        if (k.c == 'q') return
+                        val n = k.c.digitToIntOrNull()
+                        if (n != null && n in 1..MENU_ITEMS.size) {
+                            sel = n - 1
+                            mode = activate(sel).also { if (it == TuiScreen.Input) { inBuf = ""; inPmt = promptFor(sel); inCb = callbackFor(sel) } else lines = dataFor(sel) }
                         }
-                        KeyEvent.Escape -> return
-                        is KeyEvent.Character -> {
-                            if (key.c == 'q') return
-                            val n = key.c.digitToIntOrNull()
-                            if (n != null && n in 1..MENU_ITEMS.size) {
-                                selectedIdx = n - 1
-                                when (selectedIdx) {
-                                    0 -> { screen = TuiScreen.Input; inputPrompt = "Search symbol"; inputBuffer = ""; inputCallback = ::doSearch }
-                                    1 -> { screen = TuiScreen.Input; inputPrompt = "Symbol name or ID"; inputBuffer = ""; inputCallback = ::doDeps }
-                                    2 -> { screen = TuiScreen.Content; contentLines = doStats() }
-                                    3 -> { screen = TuiScreen.Content; contentLines = doFlow() }
-                                    4 -> { screen = TuiScreen.Content; contentLines = doExport() }
-                                    5 -> { screen = TuiScreen.Content; contentLines = doDeadCode() }
-                                }
-                            }
-                        }
-                        else -> {}
                     }
+                    else -> {}
                 }
 
-                TuiScreen.Input -> {
-                    when (key) {
-                        KeyEvent.Enter -> {
-                            contentLines = inputCallback(inputBuffer)
-                            screen = TuiScreen.Content
-                        }
-                        KeyEvent.Escape -> { screen = TuiScreen.Menu; inputBuffer = "" }
-                        KeyEvent.Backspace -> if (inputBuffer.isNotEmpty()) inputBuffer = inputBuffer.dropLast(1)
-                        is KeyEvent.Character -> inputBuffer += key.c
-                        else -> {}
-                    }
+                TuiScreen.Input -> when (k) {
+                    KeyEvent.Enter     -> { lines = inCb(inBuf); mode = TuiScreen.Content }
+                    KeyEvent.Escape    -> { mode = TuiScreen.Menu; inBuf = "" }
+                    KeyEvent.Backspace -> if (inBuf.isNotEmpty()) inBuf = inBuf.dropLast(1)
+                    is KeyEvent.Character -> inBuf += k.c
+                    else -> {}
                 }
 
-                TuiScreen.Content -> {
-                    when (key) {
-                        KeyEvent.Escape, KeyEvent.Enter -> screen = TuiScreen.Menu
-                        is KeyEvent.Character -> if (key.c == 'q') screen = TuiScreen.Menu
-                        else -> {}
-                    }
+                TuiScreen.Content -> when (k) {
+                    KeyEvent.Escape, KeyEvent.Enter -> mode = TuiScreen.Menu
+                    is KeyEvent.Character -> if (k.c == 'q') mode = TuiScreen.Menu
+                    else -> {}
                 }
             }
         }
     }
 
-    // ─── Frame renderer ────────────────────────────────────────────────────
+    private fun activate(sel: Int)   = if (sel in listOf(0, 1)) TuiScreen.Input else TuiScreen.Content
+    private fun promptFor(sel: Int)  = if (sel == 0) "Search symbol" else "Symbol name"
+    private fun callbackFor(sel: Int) = if (sel == 0) ::doSearch else ::doDeps
+    private fun dataFor(sel: Int) = when (sel) {
+        2    -> doStats()
+        3    -> doFlow()
+        4    -> doExport()
+        5    -> doDeadCode()
+        else -> emptyList()
+    }
 
-    private fun drawFrame(
-        selectedIdx: Int,
-        screen: TuiScreen,
-        contentLines: List<String>,
-        inputBuffer: String,
-        inputPrompt: String
-    ) {
-        Screen.begin()
+    // ─── Renderer ─────────────────────────────────────────────────────────────
 
-        // ── Header ──────────────────────────────────────────────────────────
-        Screen.write(moveTo(1, 1))
-        Screen.write(BG_TITLE)
-        Screen.write(" ".repeat(termW))
-        Screen.write(moveTo(1, 1))
-        Screen.write("${BOLD}${ACCENT} ◈  KINDEX${RESET}${BG_TITLE}${MUTED}  v1.0.0${RESET}${BG_TITLE}")
+    private fun render(sel: Int, mode: TuiScreen, lines: List<String>, inBuf: String, inPmt: String) {
+        val w = termW
+        val h = termH
+        val bodyH = h - HEADER_H - FOOTER_H     // rows available for menu+content
+        val menuRows = MENU_ITEMS.size * 2 + 2   // items (2 rows each) + top/bottom border
+        val contW = w - CONT_COL                  // usable content columns
 
-        val repoLabel = "  ${MUTED}repo: ${RESET}${BG_TITLE}${BRIGHT}${rootDir.absolutePath.takeLast(termW - 40)}${RESET}${BG_TITLE}"
-        Screen.write(repoLabel)
+        buf.clear()
 
-        val quitLabel = "${RED}  [q] Quit  ${RESET}"
-        Screen.write(moveTo(1, termW - 12))
-        Screen.write("${BG_TITLE}${quitLabel}${RESET}")
+        // Full clear each frame — guarantees no stale rows from a previous,
+        // possibly taller render can survive (kills the "growing menu" bug)
+        w(CLEAR)
 
-        Screen.write(moveTo(2, 1))
-        Screen.write("${MUTED}${"─".repeat(termW)}${RESET}")
+        // ── 1. Header ─────────────────────────────────────────────────────────
+        w(at(1, 1))
+        w(BG_TITLE + " ".repeat(w) + RESET)
+        w(at(1, 1))
+        w("$BG_TITLE $BOLD$C_ACCENT KINDEX$RESET$BG_TITLE $C_MUTED v1.0.0$RESET$BG_TITLE")
+        w("  $C_MUTED|$RESET$BG_TITLE  ${rootDir.absolutePath.takeLast(w - 30)}")
+        // [q] Quit flush-right
+        val qStr = "  [q] Quit "
+        w(at(1, w - qStr.length + 1))
+        w("$BG_TITLE$C_RED$qStr$RESET")
 
-        // ── Menu sidebar ────────────────────────────────────────────────────
-        val menuTop = HEADER_H
-        val menuH   = termH - HEADER_H - FOOTER_H
+        w(at(2, 1))
+        w("$C_MUTED${"─".repeat(w)}$RESET")
 
-        Screen.write(moveTo(menuTop, 1))
-        Screen.write("${MUTED}╭${"─".repeat(MENU_W - 2)}╮${RESET}")
+        // ── 2. Sidebar: full box drawn first, then content rows ───────────────
+        val sideTop = HEADER_H + 1
 
+        // Top border
+        w(at(sideTop, 1))
+        w("$C_MUTED╭${"─".repeat(MENU_W - 2)}╮$RESET")
+
+        // Menu rows — each item: 1 label row + 1 desc row
         for (i in MENU_ITEMS.indices) {
-            val item = MENU_ITEMS[i]
-            val row  = menuTop + 1 + i * 2
-            if (row >= menuTop + menuH - 1) break
+            val item  = MENU_ITEMS[i]
+            val rowA  = sideTop + 1 + i * 2
+            val rowB  = rowA + 1
+            val active = (i == sel && mode == TuiScreen.Menu)
+            val numStr = item.num
+            val labelPad = (MENU_W - 7).coerceAtLeast(0)
+            val descPad  = (MENU_W - 5).coerceAtLeast(0)
 
-            Screen.write(moveTo(row, 1))
-            if (i == selectedIdx && screen == TuiScreen.Menu) {
-                Screen.write("${MUTED}│${RESET}${BG_SEL}${BOLD}${ACCENT2} ${item.icon} ${item.label.padEnd(MENU_W - 7)} ${RESET}${MUTED}│${RESET}")
+            w(at(rowA, 1))
+            if (active) {
+                w("$C_MUTED│$RESET$BG_SEL $BOLD$C_ACCENT2$numStr$RESET$BG_SEL $BOLD$C_BRIGHT${item.label.padEnd(labelPad)}$RESET$BG_SEL $C_MUTED│$RESET")
             } else {
-                Screen.write("${MUTED}│${RESET}  ${MUTED}${item.icon}${RESET} ${BRIGHT}${item.label.padEnd(MENU_W - 7)}${RESET}${MUTED} │${RESET}")
+                w("$C_MUTED│$RESET $C_MUTED$numStr$RESET $C_BRIGHT${item.label.padEnd(labelPad)}$RESET $C_MUTED│$RESET")
             }
 
-            // Desc line
-            if (row + 1 < menuTop + menuH - 1) {
-                Screen.write(moveTo(row + 1, 1))
-                Screen.write("${MUTED}│   ${DIM}${item.desc.take(MENU_W - 5).padEnd(MENU_W - 5)}${RESET}${MUTED}│${RESET}")
-            }
+            w(at(rowB, 1))
+            w("$C_MUTED│  $DIM${item.desc.take(descPad).padEnd(descPad)}$RESET$C_MUTED│$RESET")
         }
 
-        Screen.write(moveTo(menuTop + menuH - 1, 1))
-        Screen.write("${MUTED}╰${"─".repeat(MENU_W - 2)}╯${RESET}")
+        // Bottom border
+        val sideBot = sideTop + menuRows - 1
+        w(at(sideBot, 1))
+        w("$C_MUTED╰${"─".repeat(MENU_W - 2)}╯$RESET")
 
-        // ── Content divider ──────────────────────────────────────────────────
-        val divCol = MENU_W + 1
-        for (row in menuTop until menuTop + menuH) {
-            Screen.write(moveTo(row, divCol))
-            Screen.write("${MUTED}│${RESET}")
+        // Vertical divider spanning the full body height
+        for (r in sideTop..<sideTop + bodyH) {
+            w(at(r, DIV_COL))
+            w("$C_MUTED│$RESET")
         }
 
-        // ── Content area ─────────────────────────────────────────────────────
-        val contentCol  = divCol + 2
-        val contentTop  = menuTop
-        val contentRows = menuH - 2
+        // ── 3. Content pane ───────────────────────────────────────────────────
+        val contTop  = sideTop
+        val contRows = bodyH - 1
 
-        when (screen) {
+        when (mode) {
             TuiScreen.Menu -> {
-                // Show welcome / summary in content pane
-                val lines = buildWelcome()
-                for ((i, line) in lines.take(contentRows).withIndex()) {
-                    Screen.write(moveTo(contentTop + 1 + i, contentCol))
-                    Screen.write(clearLine())
-                    Screen.write(line)
-                }
-                // Clear remaining lines
-                for (i in lines.size until contentRows) {
-                    Screen.write(moveTo(contentTop + 1 + i, contentCol))
-                    Screen.write(clearLine())
+                val welcome = buildWelcome()
+                for (r in 0 until contRows) {
+                    w(at(contTop + r, CONT_COL))
+                    w(CLR_EOL)
+                    if (r < welcome.size) w(welcome[r])
                 }
             }
 
             TuiScreen.Input -> {
-                // Clear content area and show input prompt
-                for (i in 0 until contentRows) {
-                    Screen.write(moveTo(contentTop + 1 + i, contentCol))
-                    Screen.write(clearLine())
+                val boxW = (contW - 4).coerceAtLeast(10)
+                for (r in 0 until contRows) {
+                    w(at(contTop + r, CONT_COL))
+                    w(CLR_EOL)
                 }
-                Screen.write(moveTo(contentTop + 3, contentCol))
-                Screen.write("${ACCENT2}${BOLD}$inputPrompt${RESET}")
-                Screen.write(moveTo(contentTop + 5, contentCol))
-                Screen.write("${MUTED}╭${"─".repeat(contentW - 4)}╮${RESET}")
-                Screen.write(moveTo(contentTop + 6, contentCol))
-                Screen.write("${MUTED}│${RESET} ${BRIGHT}${inputBuffer}${ACCENT}▌${RESET}${" ".repeat((contentW - 4 - inputBuffer.length - 1).coerceAtLeast(0))}${MUTED}│${RESET}")
-                Screen.write(moveTo(contentTop + 7, contentCol))
-                Screen.write("${MUTED}╰${"─".repeat(contentW - 4)}╯${RESET}")
-                Screen.write(moveTo(contentTop + 9, contentCol))
-                Screen.write("${DIM}Press ${BRIGHT}Enter${RESET}${DIM} to confirm · ${BRIGHT}Esc${RESET}${DIM} to cancel${RESET}")
+                w(at(contTop + 2, CONT_COL))
+                w("$C_ACCENT2$BOLD> $inPmt$RESET")
+                w(at(contTop + 4, CONT_COL))
+                w("$C_MUTED╭${"─".repeat(boxW)}╮$RESET")
+                w(at(contTop + 5, CONT_COL))
+                val cursor = "$C_ACCENT▌$RESET"
+                val fill = " ".repeat((boxW - inBuf.length - 1).coerceAtLeast(0))
+                w("$C_MUTED│$RESET $C_BRIGHT$inBuf$cursor$fill$C_MUTED│$RESET")
+                w(at(contTop + 6, CONT_COL))
+                w("$C_MUTED╰${"─".repeat(boxW)}╯$RESET")
+                w(at(contTop + 8, CONT_COL))
+                w("${DIM}Enter$RESET$DIM — confirm   $RESET${DIM}Esc$RESET$DIM — cancel$RESET")
             }
 
             TuiScreen.Content -> {
-                for ((i, line) in contentLines.take(contentRows).withIndex()) {
-                    Screen.write(moveTo(contentTop + 1 + i, contentCol))
-                    Screen.write(clearLine())
-                    Screen.write(line)
+                for (r in 0 until contRows) {
+                    w(at(contTop + r, CONT_COL))
+                    w(CLR_EOL)
+                    if (r < lines.size) w(lines[r])
                 }
-                for (i in contentLines.size until contentRows) {
-                    Screen.write(moveTo(contentTop + 1 + i, contentCol))
-                    Screen.write(clearLine())
-                }
-                if (contentLines.isNotEmpty()) {
-                    Screen.write(moveTo(contentTop + contentRows, contentCol))
-                    Screen.write("${DIM}Press ${BRIGHT}Enter${RESET}${DIM} or ${BRIGHT}Esc${RESET}${DIM} to go back${RESET}")
-                }
+                // Back hint
+                w(at(contTop + contRows, CONT_COL))
+                w("${DIM}Enter$RESET$DIM/$RESET${DIM}Esc$RESET$DIM — back$RESET")
             }
         }
 
-        // ── Footer ────────────────────────────────────────────────────────────
-        val footerRow = termH - FOOTER_H + 1
-        Screen.write(moveTo(footerRow, 1))
-        Screen.write("${MUTED}${"─".repeat(termW)}${RESET}")
-        Screen.write(moveTo(footerRow + 1, 1))
-        Screen.write(
-            "${BG_TITLE} ${MUTED}[↑↓]${RESET}${BG_TITLE} Navigate  " +
-            "${MUTED}[↵]${RESET}${BG_TITLE} Select  " +
-            "${MUTED}[1-6]${RESET}${BG_TITLE} Quick jump  " +
-            "${MUTED}[Esc]${RESET}${BG_TITLE} Back  " +
-            "${MUTED}[q]${RESET}${BG_TITLE} Quit" +
-            " ".repeat((termW - 75).coerceAtLeast(0)) +
-            "${RESET}"
-        )
+        // ── 4. Footer ─────────────────────────────────────────────────────────
+        w(at(h - 1, 1))
+        w("$C_MUTED${"─".repeat(w)}$RESET")
+        w(at(h, 1))
+        w(BG_TITLE)
+        w("$C_MUTED [↑↓]$RESET$BG_TITLE Navigate  ")
+        w("$C_MUTED [↵]$RESET$BG_TITLE Select  ")
+        w("$C_MUTED [1-6]$RESET$BG_TITLE Quick jump  ")
+        w("$C_MUTED [Esc]$RESET$BG_TITLE Back  ")
+        w("$C_MUTED [q]$RESET$BG_TITLE Quit")
+        w(" ".repeat((w - 60).coerceAtLeast(0)))
+        w(RESET)
 
-        Screen.flush()
+        flush()
     }
 
-    // ─── Welcome pane ──────────────────────────────────────────────────────
+    // ─── Welcome pane content ─────────────────────────────────────────────────
 
     private fun buildWelcome(): List<String> {
         return try {
-            val stats = storage.getRepositoryStats()
+            val s = storage.getRepositoryStats()
             listOf(
                 "",
-                "${ACCENT2}${BOLD}  ◈  Repository Overview${RESET}",
+                "$C_ACCENT2$BOLD  Repository Overview$RESET",
                 "",
-                "  ${MUTED}Path    ${RESET}${BRIGHT}${rootDir.absolutePath}${RESET}",
-                "  ${MUTED}Index   ${RESET}${SUCCESS}${rootDir.path}/.kindex/index.db  ✓${RESET}",
+                "  $C_MUTED Path   $RESET $C_BRIGHT${rootDir.absolutePath}$RESET",
+                "  $C_MUTED Index  $RESET $C_SUCCESS${rootDir.path}/.kindex/index.db  ok$RESET",
                 "",
-                "  ${MUTED}┌──────────────────────────────┐${RESET}",
-                "  ${MUTED}│${RESET}  ${CYAN}${BOLD}${stats.fileCount.toString().padStart(6)}${RESET}  ${MUTED}Files indexed${RESET}         ${MUTED}│${RESET}",
-                "  ${MUTED}│${RESET}  ${CYAN}${BOLD}${stats.symbolCount.toString().padStart(6)}${RESET}  ${MUTED}Symbols extracted${RESET}     ${MUTED}│${RESET}",
-                "  ${MUTED}│${RESET}  ${CYAN}${BOLD}${stats.packageCount.toString().padStart(6)}${RESET}  ${MUTED}Packages found${RESET}        ${MUTED}│${RESET}",
-                "  ${MUTED}│${RESET}  ${CYAN}${BOLD}${stats.classCount.toString().padStart(6)}${RESET}  ${MUTED}Classes & interfaces${RESET}  ${MUTED}│${RESET}",
-                "  ${MUTED}│${RESET}  ${CYAN}${BOLD}${stats.edgeCount.toString().padStart(6)}${RESET}  ${MUTED}Dependency edges${RESET}      ${MUTED}│${RESET}",
-                "  ${MUTED}└──────────────────────────────┘${RESET}",
+                "  $C_MUTED Files      $RESET $BOLD$C_CYAN${s.fileCount}$RESET",
+                "  $C_MUTED Symbols    $RESET $BOLD$C_CYAN${s.symbolCount}$RESET",
+                "  $C_MUTED Packages   $RESET $BOLD$C_CYAN${s.packageCount}$RESET",
+                "  $C_MUTED Classes    $RESET $BOLD$C_CYAN${s.classCount}$RESET",
+                "  $C_MUTED Functions  $RESET $BOLD$C_CYAN${s.functionCount}$RESET",
+                "  $C_MUTED Edges      $RESET $BOLD$C_CYAN${s.edgeCount}$RESET",
                 "",
-                "  ${DIM}Use arrow keys to navigate the menu.${RESET}",
-                "  ${DIM}Press Enter to select, q to quit.${RESET}",
+                "  ${DIM}Use arrow keys or [1-6] to navigate.$RESET",
             )
         } catch (_: Exception) {
-            listOf("  ${WARNING}⚠  Could not load statistics${RESET}")
+            listOf("  $C_WARN  Could not load stats$RESET")
         }
     }
 
-    // ─── Action handlers ──────────────────────────────────────────────────
+    // ─── Action data providers ────────────────────────────────────────────────
 
     private fun doSearch(query: String): List<String> {
-        if (query.isBlank()) return listOf("  ${MUTED}No query entered.${RESET}")
+        if (query.isBlank()) return listOf("  $C_MUTED No query entered.$RESET")
         return try {
             val matches = storage.searchSymbols(query)
             if (matches.isEmpty()) {
-                listOf("  ${WARNING}No symbols found matching \"$query\"${RESET}")
-            } else {
-                buildList {
-                    add("")
-                    add("  ${ACCENT2}${BOLD}Search results for \"$query\"  —  ${matches.size} match(es)${RESET}")
-                    add("")
-                    add("  ${MUTED}${"Name".padEnd(30)}  ${"Type".padEnd(14)}  File${RESET}")
-                    add("  ${MUTED}${"─".repeat(28)}  ${"─".repeat(12)}  ${"─".repeat(30)}${RESET}")
-                    matches.take(25).forEach { s: Symbol ->
-                        add("  ${BRIGHT}${s.name.take(28).padEnd(28)}${RESET}  ${CYAN}${s.type.name.take(12).padEnd(12)}${RESET}  ${MUTED}${s.filePath.substringAfterLast('\\').substringAfterLast('/').take(40)}${RESET}")
-                    }
-                    if (matches.size > 25) add("  ${DIM}… and ${matches.size - 25} more${RESET}")
+                listOf("  $C_WARN No symbols found for \"$query\"$RESET")
+            } else buildList {
+                add(""); add("  $C_ACCENT2$BOLD${matches.size} result(s) for \"$query\"$RESET"); add("")
+                add("  $C_MUTED ${"Name".padEnd(28)}  ${"Type".padEnd(12)}  File$RESET")
+                add("  $C_MUTED ${"─".repeat(28)}  ${"─".repeat(12)}  ${"─".repeat(28)}$RESET")
+                matches.take(20).forEach { s: Symbol ->
+                    add("  $C_BRIGHT${s.name.take(28).padEnd(28)}$RESET  $C_CYAN${s.type.name.take(12).padEnd(12)}$RESET  $C_MUTED${s.filePath.substringAfterLast('\\').substringAfterLast('/').take(36)}$RESET")
                 }
+                if (matches.size > 20) add("  $DIM...and ${matches.size - 20} more$RESET")
             }
-        } catch (e: Exception) {
-            listOf("  ${RED}Error: ${e.message}${RESET}")
-        }
+        } catch (e: Exception) { listOf("  $C_RED Error: ${e.message}$RESET") }
     }
 
     private fun doDeps(target: String): List<String> {
-        if (target.isBlank()) return listOf("  ${MUTED}No target entered.${RESET}")
+        if (target.isBlank()) return listOf("  $C_MUTED No target entered.$RESET")
         return try {
-            val incoming = storage.getIncomingDependencies(target)
-            val outgoing = storage.getOutgoingDependencies(target)
+            val inc = storage.getIncomingDependencies(target)
+            val out = storage.getOutgoingDependencies(target)
             buildList {
+                add(""); add("  $C_ACCENT2$BOLD Dependencies for \"$target\"$RESET"); add("")
+                add("  $C_SUCCESS$BOLD Incoming — ${inc.size}$RESET")
+                if (inc.isEmpty()) add("  $DIM  none$RESET")
+                inc.take(10).forEach { e -> add("  $C_MUTED  <- $C_BRIGHT${e.sourceId.take(55)}$RESET$C_MUTED (${e.relation})$RESET") }
                 add("")
-                add("  ${ACCENT2}${BOLD}Dependencies for \"$target\"${RESET}")
-                add("")
-                add("  ${SUCCESS}${BOLD}▸ Incoming (dependents) — ${incoming.size}${RESET}")
-                if (incoming.isEmpty()) add("  ${DIM}  none${RESET}")
-                incoming.take(12).forEach { e -> add("  ${MUTED}  ← ${BRIGHT}${e.sourceId.take(60)}${RESET}${MUTED}  (${e.relation})${RESET}") }
-                add("")
-                add("  ${CYAN}${BOLD}▸ Outgoing (calls/imports) — ${outgoing.size}${RESET}")
-                if (outgoing.isEmpty()) add("  ${DIM}  none${RESET}")
-                outgoing.take(12).forEach { e -> add("  ${MUTED}  → ${BRIGHT}${e.targetId.take(60)}${RESET}${MUTED}  (${e.relation})${RESET}") }
+                add("  $C_CYAN$BOLD Outgoing — ${out.size}$RESET")
+                if (out.isEmpty()) add("  $DIM  none$RESET")
+                out.take(10).forEach { e -> add("  $C_MUTED  -> $C_BRIGHT${e.targetId.take(55)}$RESET$C_MUTED (${e.relation})$RESET") }
             }
-        } catch (e: Exception) {
-            listOf("  ${RED}Error: ${e.message}${RESET}")
-        }
+        } catch (e: Exception) { listOf("  $C_RED Error: ${e.message}$RESET") }
     }
 
     private fun doStats(): List<String> {
         return try {
-            val stats = storage.getRepositoryStats()
+            val s = storage.getRepositoryStats()
             listOf(
-                "",
-                "  ${ACCENT2}${BOLD}Repository Structural Statistics${RESET}",
-                "",
-                "  ${MUTED}┌────────────────────────────────────┬──────────┐${RESET}",
-                "  ${MUTED}│${RESET}  ${BRIGHT}Metric${RESET}                              ${MUTED}│${RESET}  ${BRIGHT}Count${RESET}   ${MUTED}│${RESET}",
-                "  ${MUTED}├────────────────────────────────────┼──────────┤${RESET}",
-                "  ${MUTED}│${RESET}  ${MUTED}Total Files${RESET}                         ${MUTED}│${RESET}  ${CYAN}${BOLD}${stats.fileCount.toString().padEnd(6)}${RESET}  ${MUTED}│${RESET}",
-                "  ${MUTED}│${RESET}  ${MUTED}Total Symbols${RESET}                       ${MUTED}│${RESET}  ${CYAN}${BOLD}${stats.symbolCount.toString().padEnd(6)}${RESET}  ${MUTED}│${RESET}",
-                "  ${MUTED}│${RESET}  ${MUTED}Packages${RESET}                            ${MUTED}│${RESET}  ${CYAN}${BOLD}${stats.packageCount.toString().padEnd(6)}${RESET}  ${MUTED}│${RESET}",
-                "  ${MUTED}│${RESET}  ${MUTED}Classes & Interfaces${RESET}                ${MUTED}│${RESET}  ${CYAN}${BOLD}${stats.classCount.toString().padEnd(6)}${RESET}  ${MUTED}│${RESET}",
-                "  ${MUTED}│${RESET}  ${MUTED}Functions & Methods${RESET}                 ${MUTED}│${RESET}  ${CYAN}${BOLD}${stats.functionCount.toString().padEnd(6)}${RESET}  ${MUTED}│${RESET}",
-                "  ${MUTED}│${RESET}  ${MUTED}Dependency Edges${RESET}                    ${MUTED}│${RESET}  ${CYAN}${BOLD}${stats.edgeCount.toString().padEnd(6)}${RESET}  ${MUTED}│${RESET}",
-                "  ${MUTED}└────────────────────────────────────┴──────────┘${RESET}",
+                "", "  $C_ACCENT2$BOLD Repository Statistics$RESET", "",
+                "  $C_MUTED Files         $RESET $BOLD$C_CYAN${s.fileCount}$RESET",
+                "  $C_MUTED Symbols       $RESET $BOLD$C_CYAN${s.symbolCount}$RESET",
+                "  $C_MUTED Packages      $RESET $BOLD$C_CYAN${s.packageCount}$RESET",
+                "  $C_MUTED Classes       $RESET $BOLD$C_CYAN${s.classCount}$RESET",
+                "  $C_MUTED Functions     $RESET $BOLD$C_CYAN${s.functionCount}$RESET",
+                "  $C_MUTED Edges         $RESET $BOLD$C_CYAN${s.edgeCount}$RESET",
             )
-        } catch (e: Exception) {
-            listOf("  ${RED}Error: ${e.message}${RESET}")
-        }
+        } catch (e: Exception) { listOf("  $C_RED Error: ${e.message}$RESET") }
     }
 
     private fun doFlow(): List<String> {
         return try {
-            val symbols = storage.getAllSymbols()
-            val edges   = storage.getAllEdges()
-            val nodes   = ArchitectureFlowAnalyzer.classifyNodes(symbols, edges)
+            val nodes   = ArchitectureFlowAnalyzer.classifyNodes(storage.getAllSymbols(), storage.getAllEdges())
             val byLayer = nodes.groupBy { it.layer }
-
             buildList {
-                add("")
-                add("  ${ACCENT2}${BOLD}Architectural Layer Analysis${RESET}")
-                add("")
-                add("  ${MUTED}┌──────────────────────────────────────────────────┬──────┐${RESET}")
-                add("  ${MUTED}│${RESET}  ${BRIGHT}Layer${RESET}                                           ${MUTED}│${RESET}  ${BRIGHT}Cnt${RESET} ${MUTED}│${RESET}")
-                add("  ${MUTED}├──────────────────────────────────────────────────┼──────┤${RESET}")
-                enumValues<ArchitecturalLayer>().forEach { layer ->
-                    val count = byLayer[layer]?.size ?: 0
-                    add("  ${MUTED}│${RESET}  ${layer.emoji} ${BRIGHT}${layer.displayName.padEnd(46)}${RESET}${MUTED}│${RESET}  ${CYAN}${BOLD}${count.toString().padEnd(4)}${RESET}${MUTED}│${RESET}")
+                add(""); add("  $C_ACCENT2$BOLD Architectural Layers$RESET"); add("")
+                enumEntries<ArchitecturalLayer>().forEach { layer ->
+                    val cnt = byLayer[layer]?.size ?: 0
+                    add("  $C_BRIGHT${layer.displayName.padEnd(30)}$RESET $BOLD$C_CYAN$cnt$RESET")
                 }
-                add("  ${MUTED}└──────────────────────────────────────────────────┴──────┘${RESET}")
-
-                val entryNodes = byLayer[ArchitecturalLayer.ENTRY_POINTS]
-                if (!entryNodes.isNullOrEmpty()) {
-                    add("")
-                    add("  ${ACCENT2}${BOLD}🚀 Entry Points (${entryNodes.size})${RESET}")
-                    add("")
-                    entryNodes.take(10).forEach { n ->
-                        add("  ${MUTED}  ▸ ${BRIGHT}${n.name}${RESET}")
-                    }
+                val ep = byLayer[ArchitecturalLayer.ENTRY_POINTS]
+                if (!ep.isNullOrEmpty()) {
+                    add(""); add("  $C_ACCENT2$BOLD Entry Points$RESET"); add("")
+                    ep.take(8).forEach { n -> add("  $C_MUTED > $C_BRIGHT${n.name}$RESET") }
                 }
             }
-        } catch (e: Exception) {
-            listOf("  ${RED}Error: ${e.message}${RESET}")
-        }
+        } catch (e: Exception) { listOf("  $C_RED Error: ${e.message}$RESET") }
     }
 
     private fun doExport(): List<String> {
         return try {
-            val symbols = storage.getAllSymbols()
-            val edges   = storage.getAllEdges()
-            val nodes   = ArchitectureFlowAnalyzer.classifyNodes(symbols, edges)
+            val nodes   = ArchitectureFlowAnalyzer.classifyNodes(storage.getAllSymbols(), storage.getAllEdges())
             val byLayer = nodes.groupBy { it.layer }
-
-            val mmdPath = "${rootDir.path}/.kindex/graph.mmd"
-            val mmdContent = buildString {
+            val path    = "${rootDir.path}/.kindex/graph.mmd"
+            val content = buildString {
                 appendLine("graph TD")
-                byLayer.entries.forEach { entry ->
-                    val layer = entry.key
-                    val layerNodes = entry.value
-                    if (layerNodes.isNotEmpty()) {
-                        val layerId = layer.name.lowercase()
-                        appendLine("    subgraph $layerId [\"${layer.emoji} ${layer.displayName}\"]")
-                        layerNodes.take(15).forEach { node ->
-                            val safeId = node.id
-                                .substringAfterLast('/')
-                                .substringAfterLast('\\')
-                                .substringBefore('#')
-                                .replace(Regex("[^a-zA-Z0-9_]"), "_")
-                            appendLine("        $safeId[\"${node.name}\"]")
-                        }
-                        appendLine("    end")
+                byLayer.forEach { (layer, layerNodes) ->
+                    if (layerNodes.isEmpty()) return@forEach
+                    appendLine("    subgraph ${layer.name.lowercase()} [\"${layer.displayName}\"]")
+                    layerNodes.take(15).forEach { node ->
+                        val id = node.id.substringAfterLast('/').substringAfterLast('\\')
+                            .substringBefore('#').replace(Regex("[^a-zA-Z0-9_]"), "_")
+                        appendLine("        $id[\"${node.name}\"]")
                     }
+                    appendLine("    end")
                 }
             }
-
-            MPFile(mmdPath).writeText(mmdContent)
-
-            listOf(
-                "",
-                "  ${SUCCESS}${BOLD}✓ Export complete${RESET}",
-                "",
-                "  ${MUTED}Mermaid diagram written to:${RESET}",
-                "  ${BRIGHT}  $mmdPath${RESET}",
-                "",
-                "  ${MUTED}Nodes exported: ${CYAN}${BOLD}${nodes.size}${RESET}",
-            )
-        } catch (e: Exception) {
-            listOf("  ${RED}Error: ${e.message}${RESET}")
-        }
+            MPFile(path).writeText(content)
+            listOf("", "  $C_SUCCESS$BOLD Export complete$RESET", "", "  $C_MUTED Written to:$RESET", "  $C_BRIGHT  $path$RESET", "", "  $C_MUTED Nodes: $RESET$BOLD$C_CYAN${nodes.size}$RESET")
+        } catch (e: Exception) { listOf("  $C_RED Error: ${e.message}$RESET") }
     }
 
     private fun doDeadCode(): List<String> {
         return try {
             val symbols = storage.getAllSymbols()
             val edges   = storage.getAllEdges()
-            val allTargets = (
-                edges.filter { it.relation == RelationType.IMPORTS }.map { it.targetId } +
-                edges.filter { it.relation == RelationType.CALLS }.map { it.targetId }
-            ).toSet()
-
-            val unreferenced = symbols.filter { s: Symbol ->
+            val targets = (edges.filter { it.relation == RelationType.IMPORTS }.map { it.targetId } +
+                           edges.filter { it.relation == RelationType.CALLS }.map { it.targetId }).toSet()
+            val dead = symbols.filter { s: Symbol ->
                 (s.type == SymbolType.CLASS || s.type == SymbolType.INTERFACE) &&
-                    !allTargets.contains(s.id) &&
-                    !s.name.contains("Main") &&
-                    !s.name.endsWith("Command")
+                    s.id !in targets && !s.name.contains("Main") && !s.name.endsWith("Command")
             }
-
-            if (unreferenced.isEmpty()) {
-                listOf("", "  ${SUCCESS}${BOLD}✓ No dead code candidates found.${RESET}")
-            } else {
-                buildList {
-                    add("")
-                    add("  ${ACCENT2}${BOLD}💀 Dead Code Candidates — ${unreferenced.size} found${RESET}")
-                    add("")
-                    add("  ${MUTED}${"Name".padEnd(30)}  ${"Type".padEnd(12)}  File${RESET}")
-                    add("  ${MUTED}${"─".repeat(28)}  ${"─".repeat(10)}  ${"─".repeat(30)}${RESET}")
-                    unreferenced.take(22).forEach { s: Symbol ->
-                        add("  ${RED}${s.name.take(28).padEnd(28)}${RESET}  ${MUTED}${s.type.name.take(10).padEnd(10)}${RESET}  ${MUTED}${s.filePath.substringAfterLast('\\').substringAfterLast('/').take(40)}${RESET}")
-                    }
-                    if (unreferenced.size > 22) add("  ${DIM}… and ${unreferenced.size - 22} more${RESET}")
+            if (dead.isEmpty()) listOf("", "  $C_SUCCESS$BOLD No dead code candidates found.$RESET")
+            else buildList {
+                add(""); add("  $C_ACCENT2$BOLD Dead Code Candidates — ${dead.size}$RESET"); add("")
+                add("  $C_MUTED ${"Name".padEnd(28)}  ${"Type".padEnd(10)}  File$RESET")
+                add("  $C_MUTED ${"─".repeat(28)}  ${"─".repeat(10)}  ${"─".repeat(26)}$RESET")
+                dead.take(18).forEach { s: Symbol ->
+                    add("  $C_RED${s.name.take(28).padEnd(28)}$RESET  $C_MUTED${s.type.name.take(10).padEnd(10)}$RESET  $C_MUTED${s.filePath.substringAfterLast('\\').substringAfterLast('/').take(34)}$RESET")
                 }
+                if (dead.size > 18) add("  $DIM...and ${dead.size - 18} more$RESET")
             }
-        } catch (e: Exception) {
-            listOf("  ${RED}Error: ${e.message}${RESET}")
-        }
+        } catch (e: Exception) { listOf("  $C_RED Error: ${e.message}$RESET") }
     }
 }
-
-private enum class TuiScreen { Menu, Input, Content }

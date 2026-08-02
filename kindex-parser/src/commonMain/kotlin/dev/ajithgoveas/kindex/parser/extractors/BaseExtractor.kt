@@ -32,13 +32,16 @@ abstract class BaseExtractor(
         queryStr: String
     ): List<MatchedGroup> {
         val parser = TSParser()
-        parser.setLanguage(tsLanguage)
+        if (!parser.setLanguage(tsLanguage)) return emptyList()
         val tree = parser.parseString(null, sourceCode)
         val rootNode = tree.getRootNode()
+        if (rootNode.isNull()) return emptyList()
 
         val groups = mutableListOf<MatchedGroup>()
         val utf8Bytes = sourceCode.encodeToByteArray()
         val query = TSQuery(tsLanguage, queryStr)
+        if (!query.isValid()) return emptyList()
+
         val cursor = TSQueryCursor()
         try {
             cursor.exec(query, rootNode)
@@ -49,17 +52,19 @@ abstract class BaseExtractor(
                 val textMap = mutableMapOf<String, String>()
                 for (capture in match.getCaptures()) {
                     val node = capture.getNode()
-                    val name = query.getCaptureNameForId(capture.getIndex())
-                    val start = minOf(node.getStartByte(), utf8Bytes.size)
-                    val end = minOf(node.getEndByte(), utf8Bytes.size)
-                    val text = if (start <= end) utf8Bytes.decodeToString(start, end).trim() else ""
-                    capturesMap[name] = node
-                    textMap[name] = text
+                    if (!node.isNull()) {
+                        val name = query.getCaptureNameForId(capture.getIndex())
+                        val start = minOf(node.getStartByte(), utf8Bytes.size)
+                        val end = minOf(node.getEndByte(), utf8Bytes.size)
+                        val text = if (start <= end && start >= 0) utf8Bytes.decodeToString(start, end).trim() else ""
+                        capturesMap[name] = node
+                        textMap[name] = text
+                    }
                 }
                 groups.add(MatchedGroup(capturesMap, textMap))
             }
-        } finally {
-            // No-op or native garbage collection handles cleanup in this version
+        } catch (_: Throwable) {
+            // Guard against parser/query execution errors
         }
         return groups
     }
