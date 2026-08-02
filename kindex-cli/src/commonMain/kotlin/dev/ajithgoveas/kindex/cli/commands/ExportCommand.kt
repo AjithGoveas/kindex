@@ -63,10 +63,11 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
         }
 
         val targetFormat = format.lowercase()
+        // Default export output paths go into .kindex/ folder by default for central access
         val defaultFile = when (targetFormat) {
-            "dot", "graphviz" -> "graph.dot"
-            "json" -> "graph.json"
-            else -> "graph.mmd"
+            "dot", "graphviz" -> "$directory/.kindex/graph.dot"
+            "json" -> "$directory/.kindex/graph.json"
+            else -> "$directory/.kindex/graph.mmd"
         }
         val targetOutputFile = outputOpt ?: defaultFile
 
@@ -95,7 +96,8 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
             "dot", "graphviz" -> {
                 val sb = StringBuilder("digraph KIndexFlowGraph {\n")
                 sb.append("    rankdir=TB;\n")
-                sb.append("    node [shape=box, style=\"filled,rounded\", fontname=\"Helvetica\"];\n")
+                sb.append("    compound=true;\n")
+                sb.append("    node [shape=box, style=\"filled,rounded\", fontname=\"Helvetica\", color=\"#495057\"];\n")
                 sb.append("    edge [fontname=\"Helvetica\", fontsize=9, color=\"#6C757D\"];\n\n")
 
                 val layerGroups = classifiedNodes.groupBy { it.layer }
@@ -121,11 +123,12 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
             }
             "json" -> exportJsonNodesAndEdges(classifiedNodes, fileEdges)
             else -> {
+                // Balanced vertical layout for Mermaid TD
                 val sb = StringBuilder("graph TD\n")
-                sb.append("    classDef entry fill:#457b9d,color:#fff,stroke:#1d3557;\n")
-                sb.append("    classDef service fill:#2a9d8f,color:#fff,stroke:#264653;\n")
-                sb.append("    classDef storage fill:#e76f51,color:#fff,stroke:#b7094c;\n")
-                sb.append("    classDef solo fill:#e9ecef,color:#212529,stroke:#ced4da,stroke-dasharray: 5 5;\n\n")
+                sb.append("    classDef entry fill:#457b9d,color:#fff,stroke:#1d3557,stroke-width:2px;\n")
+                sb.append("    classDef service fill:#2a9d8f,color:#fff,stroke:#264653,stroke-width:2px;\n")
+                sb.append("    classDef storage fill:#e76f51,color:#fff,stroke:#b7094c,stroke-width:2px;\n")
+                sb.append("    classDef solo fill:#e9ecef,color:#212529,stroke:#ced4da,stroke-width:1px,stroke-dasharray: 5 5;\n\n")
 
                 val layerGroups = classifiedNodes.groupBy { it.layer }
                 for (layer in ArchitecturalLayer.values()) {

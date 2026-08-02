@@ -11,6 +11,8 @@ import com.github.ajalt.mordant.rendering.BorderType
 import com.github.ajalt.mordant.terminal.Terminal
 import dev.ajithgoveas.kindex.storage.IndexStorage
 import dev.ajithgoveas.kindex.parser.extractors.*
+import dev.ajithgoveas.kindex.core.analysis.ArchitectureFlowAnalyzer
+import dev.ajithgoveas.kindex.core.analysis.ArchitecturalLayer
 import org.jline.terminal.TerminalBuilder
 import org.jline.keymap.BindingReader
 import org.jline.keymap.KeyMap
@@ -121,7 +123,7 @@ class InteractiveCommand : CliktCommand(
             "[DEPS]   Query dependencies & references",
             "[STATS]  View structural stats",
             "[DEAD]   Identify dead / unused code",
-            "[GRAPH]  Export Mermaid graph",
+            "[GRAPH]  Export Architectural Graphs (.kindex/)",
             "[QUIT]   Quit session & exit"
         )
 
@@ -130,7 +132,7 @@ class InteractiveCommand : CliktCommand(
             "💡 Trace cross-symbol import references, incoming dependents, and outgoing callers.",
             "💡 View a metrics breakdown of the indexed repository codebase (files, packages, classes).",
             "💡 Locate dead code (classes, methods, and interfaces with 0 incoming references).",
-            "💡 Generate and export a graph representation to graph.mmd in Mermaid format.",
+            "💡 Export Mermaid, Graphviz DOT, or JSON graph diagrams directly to .kindex/ directory.",
             "💡 Tear down the local session database and safely exit the explorer."
         )
 
@@ -363,24 +365,32 @@ class InteractiveCommand : CliktCommand(
                             }
                         }
                         4 -> {
-                            t.println(bold(magenta("🕸️ MERMAID GRAPH EXPORT")))
-                            t.println(dim("───────────────────────────────────────────────────────────\n"))
+                            t.println(bold(magenta("🕸️ ARCHITECTURAL GRAPH EXPORTERS")))
+                            t.println(dim("───────────────────────────────────────────────────────────"))
+                            t.println(bold("Export files are saved directly inside .kindex/ for easy access.\n"))
+                            t.println("1. Hierarchical Flow Map (Mermaid TD)  -> .kindex/graph.mmd")
+                            t.println("2. Graphviz DOT Diagram                -> .kindex/graph.dot")
+                            t.println("3. JSON Graph Data Payload             -> .kindex/graph.json")
+                            t.println("4. File-Level Dependency Wiring        -> .kindex/file_wiring.dot")
+                            t.println("5. Package-Level Dependency Wiring     -> .kindex/package_wiring.json")
+                            t.println()
+                            t.print(bold("Select export format [1-5]") + cyan(" ❯ "))
+
+                            val sel = readlnOrNull()?.trim() ?: "1"
+                            val symbols = storage.getAllSymbols()
                             val edges = storage.getAllEdges()
-                            val mermaidContent = StringBuilder("graph TD\n")
-                            val sanitizedEdges = mutableSetOf<String>()
-                            for (edge in edges.take(200)) {
-                                val rawSource = edge.sourceId.substringAfterLast("/").substringAfterLast("\\")
-                                val rawTarget = edge.targetId.substringAfterLast("/").substringAfterLast("\\")
-                                val sourceId = rawSource.replace(Regex("[^a-zA-Z0-9_]"), "_")
-                                val targetId = rawTarget.replace(Regex("[^a-zA-Z0-9_]"), "_")
-                                val edgeLine = "    $sourceId[\"$rawSource\"] -->|${edge.relation}| $targetId[\"$rawTarget\"]\n"
-                                if (sanitizedEdges.add(edgeLine)) {
-                                    mermaidContent.append(edgeLine)
-                                }
+
+                            val (fileName, content) = when (sel) {
+                                "2" -> "graph.dot" to exportDotFlow(symbols, edges)
+                                "3" -> "graph.json" to exportJsonFlow(symbols, edges)
+                                "4" -> "file_wiring.dot" to exportFileDot(edges)
+                                "5" -> "package_wiring.json" to exportPackageJson(symbols, edges)
+                                else -> "graph.mmd" to exportMermaidFlow(symbols, edges)
                             }
-                            val outputFile = File(directory, "graph.mmd")
-                            outputFile.writeText(mermaidContent.toString())
-                            t.println(green("✓ Exported Mermaid graph to ${outputFile.path}"))
+
+                            val outFile = File(dbDir, fileName)
+                            outFile.writeText(content)
+                            t.println(green("\n✓ Successfully exported graph to: ${outFile.absolutePath}"))
                         }
                     }
                 } catch (e: Exception) {
@@ -400,6 +410,107 @@ class InteractiveCommand : CliktCommand(
         jlineTerminal.close()
         AnsiConsole.systemUninstall()
         cleanupSession(dbDir, t)
+    }
+
+    private fun exportMermaidFlow(symbols: List<dev.ajithgoveas.kindex.core.model.Symbol>, edges: List<dev.ajithgoveas.kindex.core.model.Edge>): String {
+        val classified = ArchitectureFlowAnalyzer.classifyNodes(symbols, edges)
+        val fileEdges = ArchitectureFlowAnalyzer.aggregateByFile(edges)
+        val sb = java.lang.StringBuilder("graph TD\n")
+        sb.append("    classDef entry fill:#457b9d,color:#fff,stroke:#1d3557;\n")
+        sb.append("    classDef service fill:#2a9d8f,color:#fff,stroke:#264653;\n")
+        sb.append("    classDef storage fill:#e76f51,color:#fff,stroke:#b7094c;\n")
+        sb.append("    classDef solo fill:#e9ecef,color:#212529,stroke:#ced4da,stroke-dasharray: 5 5;\n\n")
+
+        val layerGroups = classified.groupBy { it.layer }
+        for (layer in ArchitecturalLayer.values()) {
+            val nodes = layerGroups[layer] ?: continue
+            val layerTitle = "${layer.emoji} ${layer.displayName}"
+            sb.append("    subgraph ${layer.name}[\"$layerTitle\"]\n")
+            val files = nodes.map { it.id.substringAfterLast("/").substringAfterLast("\\").substringBefore("#") }.distinct()
+            val styleClass = when(layer) {
+                ArchitecturalLayer.ENTRY_POINTS -> "entry"
+                ArchitecturalLayer.SERVICES -> "service"
+                ArchitecturalLayer.STORAGE -> "storage"
+                ArchitecturalLayer.UTILITIES -> "solo"
+            }
+            for (f in files.take(8)) {
+                val safeId = f.replace(Regex("[^a-zA-Z0-9_]"), "_")
+                sb.append("        $safeId[\"$f\"]:::$styleClass\n")
+            }
+            sb.append("    end\n\n")
+        }
+
+        for (e in fileEdges.take(100)) {
+            val src = e.source.replace(Regex("[^a-zA-Z0-9_]"), "_")
+            val tgt = e.target.replace(Regex("[^a-zA-Z0-9_]"), "_")
+            sb.append("    $src -->|${e.relation} ${e.weight}x| $tgt\n")
+        }
+        return sb.toString()
+    }
+
+    private fun exportDotFlow(symbols: List<dev.ajithgoveas.kindex.core.model.Symbol>, edges: List<dev.ajithgoveas.kindex.core.model.Edge>): String {
+        val classified = ArchitectureFlowAnalyzer.classifyNodes(symbols, edges)
+        val fileEdges = ArchitectureFlowAnalyzer.aggregateByFile(edges)
+        val sb = java.lang.StringBuilder("digraph KIndexFlowGraph {\n")
+        sb.append("    rankdir=TB;\n")
+        sb.append("    compound=true;\n")
+        sb.append("    node [shape=box, style=\"filled,rounded\", fontname=\"Helvetica\", color=\"#495057\"];\n")
+        sb.append("    edge [fontname=\"Helvetica\", fontsize=9, color=\"#6C757D\"];\n\n")
+
+        val layerGroups = classified.groupBy { it.layer }
+        for (layer in ArchitecturalLayer.values()) {
+            val nodes = layerGroups[layer] ?: continue
+            sb.append("    subgraph cluster_${layer.name} {\n")
+            sb.append("        label=\"${layer.emoji} ${layer.displayName}\";\n")
+            sb.append("        style=dashed; color=\"#6C757D\";\n")
+            val files = nodes.map { it.id.substringAfterLast("/").substringAfterLast("\\").substringBefore("#") }.distinct()
+            for (f in files.take(8)) {
+                val safeId = f.replace(Regex("[^a-zA-Z0-9_]"), "_")
+                sb.append("        \"$safeId\" [label=\"$f\"];\n")
+            }
+            sb.append("    }\n\n")
+        }
+
+        for (e in fileEdges.take(100)) {
+            val src = e.source.replace(Regex("[^a-zA-Z0-9_]"), "_")
+            val tgt = e.target.replace(Regex("[^a-zA-Z0-9_]"), "_")
+            sb.append("    \"$src\" -> \"$tgt\" [label=\"${e.relation} (${e.weight})\"];\n")
+        }
+        sb.append("}\n")
+        return sb.toString()
+    }
+
+    private fun exportJsonFlow(symbols: List<dev.ajithgoveas.kindex.core.model.Symbol>, edges: List<dev.ajithgoveas.kindex.core.model.Edge>): String {
+        val classified = ArchitectureFlowAnalyzer.classifyNodes(symbols, edges)
+        val fileEdges = ArchitectureFlowAnalyzer.aggregateByFile(edges)
+        val nodesJson = classified.map {
+            """    { "id": "${it.id.replace("\"", "\\\"")}", "name": "${it.name}", "layer": "${it.layer.name}", "type": "${it.symbolType}" }"""
+        }
+        val linksJson = fileEdges.map {
+            """    { "source": "${it.source}", "target": "${it.target}", "relation": "${it.relation}", "weight": ${it.weight} }"""
+        }
+        return "{\n  \"nodes\": [\n${nodesJson.joinToString(",\n")}\n  ],\n  \"links\": [\n${linksJson.joinToString(",\n")}\n  ]\n}"
+    }
+
+    private fun exportFileDot(edges: List<dev.ajithgoveas.kindex.core.model.Edge>): String {
+        val fileEdges = ArchitectureFlowAnalyzer.aggregateByFile(edges)
+        val sb = java.lang.StringBuilder("digraph FileWiringGraph {\n    rankdir=LR;\n    node [shape=box, style=\"filled,rounded\", fillcolor=\"#E9ECEF\", fontname=\"Helvetica\"];\n")
+        for (e in fileEdges) {
+            sb.append("    \"${e.source}\" -> \"${e.target}\" [label=\"${e.relation} (${e.weight})\"];\n")
+        }
+        sb.append("}\n")
+        return sb.toString()
+    }
+
+    private fun exportPackageJson(symbols: List<dev.ajithgoveas.kindex.core.model.Symbol>, edges: List<dev.ajithgoveas.kindex.core.model.Edge>): String {
+        val pkgEdges = ArchitectureFlowAnalyzer.aggregateByPackage(edges, symbols)
+        val nodes = pkgEdges.flatMap { listOf(it.source, it.target) }.distinct().map {
+            """    { "id": "$it", "type": "PACKAGE" }"""
+        }
+        val links = pkgEdges.map {
+            """    { "source": "${it.source}", "target": "${it.target}", "relation": "${it.relation}", "weight": ${it.weight} }"""
+        }
+        return "{\n  \"nodes\": [\n${nodes.joinToString(",\n")}\n  ],\n  \"links\": [\n${links.joinToString(",\n")}\n  ]\n}"
     }
 
     private fun cleanupSession(dbDir: File, t: Terminal) {
