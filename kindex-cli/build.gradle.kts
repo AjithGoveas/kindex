@@ -9,31 +9,42 @@ kotlin {
         }
     }
 
-    mingwX64 {
-        binaries {
-            executable {
-                entryPoint = "dev.ajithgoveas.kindex.cli.main"
+    val buildNative = project.hasProperty("native")
+    val hostOs = System.getProperty("os.name")
+
+    if (buildNative) {
+        if (hostOs.startsWith("Windows")) {
+            mingwX64 {
+                binaries {
+                    executable {
+                        entryPoint = "dev.ajithgoveas.kindex.cli.main"
+                    }
+                }
             }
         }
-    }
-    linuxX64 {
-        binaries {
-            executable {
-                entryPoint = "dev.ajithgoveas.kindex.cli.main"
+        if (hostOs.startsWith("Linux")) {
+            linuxX64 {
+                binaries {
+                    executable {
+                        entryPoint = "dev.ajithgoveas.kindex.cli.main"
+                    }
+                }
             }
         }
-    }
-    macosArm64 {
-        binaries {
-            executable {
-                entryPoint = "dev.ajithgoveas.kindex.cli.main"
+        if (hostOs.startsWith("Mac OS X")) {
+            macosArm64 {
+                binaries {
+                    executable {
+                        entryPoint = "dev.ajithgoveas.kindex.cli.main"
+                    }
+                }
             }
-        }
-    }
-    macosX64 {
-        binaries {
-            executable {
-                entryPoint = "dev.ajithgoveas.kindex.cli.main"
+            macosX64 {
+                binaries {
+                    executable {
+                        entryPoint = "dev.ajithgoveas.kindex.cli.main"
+                    }
+                }
             }
         }
     }

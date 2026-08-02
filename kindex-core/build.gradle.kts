@@ -5,10 +5,22 @@ plugins {
 
 kotlin {
     jvm()
-    mingwX64()
-    linuxX64()
-    macosArm64()
-    macosX64()
+
+    val buildNative = project.hasProperty("native")
+    val hostOs = System.getProperty("os.name")
+
+    if (buildNative) {
+        if (hostOs.startsWith("Windows")) {
+            mingwX64()
+        }
+        if (hostOs.startsWith("Linux")) {
+            linuxX64()
+        }
+        if (hostOs.startsWith("Mac OS X")) {
+            macosArm64()
+            macosX64()
+        }
+    }
 
     applyDefaultHierarchyTemplate()
 

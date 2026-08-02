@@ -43,5 +43,8 @@ This document tracks the milestones, architectural upgrades, and completed phase
 
 ---
 
-> [!TIP]
-> Verified the codebase locally by scanning test repositories. Call dependencies (such as `CALLS -> com.example.Service`) resolve correctly and compile cleanly.
+> [!IMPORTANT]
+> **Windows Compilation & Build Note:**
+> To resolve SQLite linking issues (`sqlite3_close` undefined symbols) and SQLDelight driver verification errors when compiling on Windows:
+> - Native platform targets (`mingwX64`, `linuxX64`, `macos*`) are gated behind the `-Pnative` project property. By default, only the JVM target builds.
+> - SQLDelight's verification tasks (`verify<SourceSet><Database>Migration`) are disabled programmatically to bypass Java/Windows path extraction and loading issues with the SQLite JDBC native wrapper.

@@ -10,6 +10,7 @@ import dev.ajithgoveas.kindex.storage.IndexStorage
 import dev.ajithgoveas.kindex.core.io.MPFile
 import okio.FileSystem
 import okio.Path.Companion.toPath
+import okio.SYSTEM
 
 class ExportCommand : CliktCommand(name = "export", help = "Export the knowledge graph to Mermaid format") {
     private val format by option("-f", "--format", help = "Format: mermaid").default("mermaid")

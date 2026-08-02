@@ -1,8 +1,8 @@
 package dev.ajithgoveas.kindex.core.io
 
 import okio.FileSystem
-import okio.Path
 import okio.Path.Companion.toPath
+import okio.SYSTEM
 
 class MPFile(val path: String) {
     private val okioPath = path.toPath()

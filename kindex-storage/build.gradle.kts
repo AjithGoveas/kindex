@@ -5,10 +5,22 @@ plugins {
 
 kotlin {
     jvm()
-    mingwX64()
-    linuxX64()
-    macosArm64()
-    macosX64()
+
+    val buildNative = project.hasProperty("native")
+    val hostOs = System.getProperty("os.name")
+
+    if (buildNative) {
+        if (hostOs.startsWith("Windows")) {
+            mingwX64()
+        }
+        if (hostOs.startsWith("Linux")) {
+            linuxX64()
+        }
+        if (hostOs.startsWith("Mac OS X")) {
+            macosArm64()
+            macosX64()
+        }
+    }
 
     applyDefaultHierarchyTemplate()
 
@@ -20,7 +32,7 @@ kotlin {
         jvmMain.dependencies {
             implementation(libs.sqldelight.driver.sqlite)
         }
-        nativeMain.dependencies {
+        findByName("nativeMain")?.dependencies {
             implementation(libs.sqldelight.driver.native)
         }
     }
@@ -30,6 +42,11 @@ sqldelight {
     databases {
         create("KIndexDatabase") {
             packageName.set("dev.ajithgoveas.kindex.storage.db")
+            verifyMigrations.set(false)
         }
     }
+}
+
+tasks.matching { it.name.startsWith("verify") && it.name.contains("Migration") }.configureEach {
+    enabled = false
 }
