@@ -20,7 +20,7 @@ import okio.FileSystem
 import okio.Path.Companion.toPath
 import okio.SYSTEM
 
-class ExportCommand : CliktCommand(name = "export", help = "Export knowledge graph into clean, uncluttered architectural flow diagrams (Mermaid, DOT, JSON)") {
+class ExportCommand : CliktCommand(name = "export", help = "Export knowledge graph into clean, file-centric architectural flow diagrams (Mermaid, DOT, JSON)") {
     private val granularity by option("-g", "--granularity", help = "Granularity: flow (default hierarchical flow), file, package, symbol").default("flow")
     private val format by option("-f", "--format", help = "Export format: mermaid, dot, json").default("mermaid")
     private val relationOpt by option("-r", "--relation", help = "Relation filter: all, calls, imports, extends").default("all")
@@ -124,8 +124,10 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
 
                 val seenEdges = mutableSetOf<String>()
                 for (e in fileEdges.take(40)) {
-                    val src = toMermaidSafeId(cleanDisplayName(e.source))
-                    val tgt = toMermaidSafeId(cleanDisplayName(e.target))
+                    val srcName = cleanDisplayName(e.source)
+                    val tgtName = cleanDisplayName(e.target)
+                    val src = toMermaidSafeId(srcName)
+                    val tgt = toMermaidSafeId(tgtName)
                     if (src != tgt) {
                         val line = "    \"$src\" -> \"$tgt\" [label=\"${e.relation}\"];\n"
                         if (seenEdges.add(line)) sb.append(line)
@@ -135,7 +137,6 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
             }
             "json" -> exportJsonNodesAndEdges(classifiedNodes, fileEdges)
             else -> {
-                // Crisp, uncluttered Mermaid TD graph with keyword collision prevention
                 val sb = StringBuilder("graph TD\n")
                 sb.append("    classDef entry fill:#457b9d,color:#fff,stroke:#1d3557,stroke-width:2px;\n")
                 sb.append("    classDef service fill:#2a9d8f,color:#fff,stroke:#264653,stroke-width:2px;\n")
@@ -163,8 +164,10 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
 
                 val seenEdges = mutableSetOf<String>()
                 for (e in fileEdges.take(40)) {
-                    val src = toMermaidSafeId(cleanDisplayName(e.source))
-                    val tgt = toMermaidSafeId(cleanDisplayName(e.target))
+                    val srcName = cleanDisplayName(e.source)
+                    val tgtName = cleanDisplayName(e.target)
+                    val src = toMermaidSafeId(srcName)
+                    val tgt = toMermaidSafeId(tgtName)
                     if (src != tgt) {
                         val line = "    $src -->|${e.relation}| $tgt\n"
                         if (seenEdges.add(line)) sb.append(line)
@@ -290,9 +293,14 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
 
     private fun cleanDisplayName(raw: String): String {
         val path = raw.substringBefore("#")
-        val shortName = path.substringAfterLast("/").substringAfterLast("\\")
-        val result = if (shortName.contains(".")) shortName.substringAfterLast(".") else shortName
-        return if (result.isBlank()) "Root" else result
+        val fileName = path.substringAfterLast("/").substringAfterLast("\\")
+        if (fileName.endsWith(".kt") || fileName.endsWith(".java") || fileName.endsWith(".rs") || 
+            fileName.endsWith(".ts") || fileName.endsWith(".js") || fileName.endsWith(".go") || 
+            fileName.endsWith(".c") || fileName.endsWith(".cpp") || fileName.endsWith(".cs")) {
+            return fileName
+        }
+        val shortSymbol = if (fileName.contains(".")) fileName.substringAfterLast(".") else fileName
+        return if (shortSymbol.isBlank()) "Main.kt" else "$shortSymbol.kt"
     }
 
     private fun toMermaidSafeId(rawName: String): String {

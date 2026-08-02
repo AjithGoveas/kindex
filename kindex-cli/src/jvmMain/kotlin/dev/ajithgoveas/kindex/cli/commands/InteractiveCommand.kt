@@ -34,14 +34,12 @@ class InteractiveCommand : CliktCommand(
     enum class KeyAction { UP, DOWN, ENTER, QUIT, SEL_1, SEL_2, SEL_3, SEL_4, SEL_5, SEL_6 }
 
     override fun run() {
-        // Initialize AnsiConsole to enable ANSI escape processing under Windows CMD/Powershell
         AnsiConsole.systemInstall()
 
         val t = Terminal()
         val dbDir = File(directory, ".kindex")
         val dbFile = File(dbDir, "index.db")
 
-        // Draw welcome dashboard panel
         t.println()
         t.println(magenta("""
   ██   ██ ██ ███    ██ ██████  ███████ ██   ██
@@ -108,13 +106,11 @@ class InteractiveCommand : CliktCommand(
         t.println(green("✓ Engine is ready. Database active."))
         Thread.sleep(800)
 
-        // Register shutdown hook to delete database folder on process kill or exit
         Runtime.getRuntime().addShutdownHook(Thread {
             cleanupSession(dbDir, t)
             AnsiConsole.systemUninstall()
         })
 
-        // Setup JLine terminal
         var jlineTerminal = TerminalBuilder.builder().system(true).jansi(true).build()
         jlineTerminal.enterRawMode()
         var reader = jlineTerminal.reader()
@@ -436,8 +432,10 @@ class InteractiveCommand : CliktCommand(
 
         val seenEdges = mutableSetOf<String>()
         for (e in fileEdges.take(40)) {
-            val src = toMermaidSafeId(cleanDisplayName(e.source))
-            val tgt = toMermaidSafeId(cleanDisplayName(e.target))
+            val srcName = cleanDisplayName(e.source)
+            val tgtName = cleanDisplayName(e.target)
+            val src = toMermaidSafeId(srcName)
+            val tgt = toMermaidSafeId(tgtName)
             if (src != tgt) {
                 val line = "    $src -->|${e.relation}| $tgt\n"
                 if (seenEdges.add(line)) sb.append(line)
@@ -515,9 +513,14 @@ class InteractiveCommand : CliktCommand(
 
     private fun cleanDisplayName(raw: String): String {
         val path = raw.substringBefore("#")
-        val shortName = path.substringAfterLast("/").substringAfterLast("\\")
-        val result = if (shortName.contains(".")) shortName.substringAfterLast(".") else shortName
-        return if (result.isBlank()) "Root" else result
+        val fileName = path.substringAfterLast("/").substringAfterLast("\\")
+        if (fileName.endsWith(".kt") || fileName.endsWith(".java") || fileName.endsWith(".rs") || 
+            fileName.endsWith(".ts") || fileName.endsWith(".js") || fileName.endsWith(".go") || 
+            fileName.endsWith(".c") || fileName.endsWith(".cpp") || fileName.endsWith(".cs")) {
+            return fileName
+        }
+        val shortSymbol = if (fileName.contains(".")) fileName.substringAfterLast(".") else fileName
+        return if (shortSymbol.isBlank()) "Main.kt" else "$shortSymbol.kt"
     }
 
     private fun toMermaidSafeId(rawName: String): String {
