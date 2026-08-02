@@ -60,9 +60,15 @@ This document tracks the milestones, architectural upgrades, and completed phase
 
 ---
 
-### Phase 8: Multi-Format Graph Exporters (`kindex export`)
-*   **Multiple Graph Formats:** Extended `ExportCommand` supporting Mermaid (`.mmd`), Graphviz DOT (`.dot`), and JSON Graph (`.json`) formats.
-*   **Structured Metadata Payload:** JSON export includes node metadata (`id`, `name`, `type`, `packageName`) and link relations (`source`, `target`, `relation`).
+### Phase 8: Architectural Flow Engine & Multi-Format Exporters (`kindex flow` / `kindex export`)
+*   **Automatic Entry-Point Resolver:** Built `EntryPointResolver` auto-detecting `main()`, `CliktCommand`, and script entry points.
+*   **4-Tier Layer Classifier:** Built `ArchitectureFlowAnalyzer` categorizing components into Entry Points, Core Services, Storage, and Standalone Utilities.
+*   **Default Hierarchical Flow Exports:** Configured default `kindex export` to generate GitDiagram-style flow maps with clean vertical subgraphs and explicit file extensions (`Main.kt`, `ExportCommand.kt`, `SymbolResolver.kt`).
+*   **Multi-Level Granularity:** Supported `-g flow`, `-g file`, `-g package`, `-g symbol` for customized architectural abstractions.
+*   **Focal Subgraph Traversal:** Implemented `--focus <target>` for N-hop connected subgraphs.
+*   **Centralized `.kindex/` Storage:** Saved export files directly in `.kindex/` by default (`.kindex/graph.mmd`, `.kindex/graph.dot`, `.kindex/graph.json`).
+*   **Top-Level Repository Root Resolver:** Built `RepositoryRootResolver` ensuring `.kindex/` is ALWAYS located at the top-level repository root directory regardless of execution depth.
+*   **Interactive TUI Exporter Sub-Menu:** Integrated graph export sub-menu into `kindex interactive` console. (`source`, `target`, `relation`).
 
 ---
 

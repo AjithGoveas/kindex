@@ -79,32 +79,25 @@ Establish baseline performance characteristics of KIndex against large-scale pro
 
 ---
 
-### 🎨 Option 5: Multi-Format Graph Exporters (`kindex export`) [COMPLETED ✅]
+### 🎨 Option 5: Architectural Flow & Multi-Format Exporters (`kindex flow` / `kindex export`) [COMPLETED ✅]
 
-Export repository architectural graph into multiple industry-standard diagram and data formats.
+Export repository architectural graph into multiple industry-standard diagram and data formats with entry-point flow and multi-level granularity.
 
 * **Key Deliverables:**
-  - [x] **Mermaid TD (`mermaid`)**: Export node-and-edge relationships in Mermaid syntax.
-  - [x] **Graphviz DOT (`dot`)**: Export Graphviz `digraph KIndexGraph { ... }` format for visualization in OmniGraffle, Graphviz, or Gephi.
-  - [x] **JSON Graph Format (`json`)**: Export structured node metadata and edge relation links for web visualizers (D3.js, Cytoscape.js).
+  - [x] **Entry-Point Flow Map (`flow`)**: Auto-detect `main()` and CLI entry points, classifying components into 4 architectural layers.
+  - [x] **Mermaid TD (`mermaid`)**: Export node-and-edge relationships in Mermaid syntax with vertical subgraphs and explicit file extensions (`.kt`).
+  - [x] **Graphviz DOT (`dot`)**: Export Graphviz `digraph KIndexGraph { ... }` format.
+  - [x] **JSON Graph Format (`json`)**: Export structured node metadata and edge relation links for web visualizers.
+  - [x] **Centralized `.kindex/` Storage**: All export diagrams saved directly in top-level `.kindex/` folder.
+  - [x] **Top-Level Repository Root Resolver**: `RepositoryRootResolver` ensures `.kindex/` is located at repository root regardless of execution directory.
 
 ---
 
-### 🚀 Option 6: Root Executable Launcher & Convenience Task (`./kindex` / `kindex.bat`)
+### 🖥️ Option 7: Interactive TUI Dashboard Enhancements [COMPLETED ✅]
 
-Provide immediate top-level launcher scripts in the repository root directory.
-
-* **Key Deliverables:**
-  - [ ] Root `./kindex` POSIX shell wrapper script.
-  - [ ] Root `kindex.bat` Windows batch wrapper script.
-  - [ ] Gradle `:installLauncher` task assembling and deploying executable wrappers automatically.
-
----
-
-### 🖥️ Option 7: Interactive TUI Dashboard Enhancements
-
-Enhance the JLine arrow-key interactive terminal UI with live search filtering, dead code inspection, and detail modals.
+Enhanced the JLine arrow-key interactive terminal UI with architectural graph export sub-menus, live symbol search, dead code detection, and structural statistics.
 
 * **Key Deliverables:**
-  - [ ] Live fuzzy symbol filtering input box in TUI.
-  - [ ] Modal inspector rendering incoming/outgoing dependency edges for selected symbols.
+  - [x] Integrated Architectural Graph Exporter sub-menu directly inside `kindex interactive` console.
+  - [x] Added dead code candidates detection with double-bordered tables.
+  - [x] Added structural repository stats breakdown.
