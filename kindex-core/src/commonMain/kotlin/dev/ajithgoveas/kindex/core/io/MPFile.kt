@@ -42,6 +42,14 @@ class MPFile(val path: String) {
         return FileSystem.SYSTEM.read(okioPath) { readByteArray() }
     }
 
+    fun writeText(content: String) {
+        val parent = okioPath.parent
+        if (parent != null && !FileSystem.SYSTEM.exists(parent)) {
+            FileSystem.SYSTEM.createDirectories(parent)
+        }
+        FileSystem.SYSTEM.write(okioPath) { writeUtf8(content) }
+    }
+
     fun lastModified(): Long {
         return FileSystem.SYSTEM.metadataOrNull(okioPath)?.lastModifiedAtMillis ?: 0L
     }

@@ -23,10 +23,23 @@ import dev.ajithgoveas.kindex.cli.commands.ExportCommand
 import dev.ajithgoveas.kindex.cli.commands.DeadCommand
 import dev.ajithgoveas.kindex.cli.commands.HookCommand
 
+import com.github.ajalt.clikt.parameters.options.versionOption
+
 expect fun getInteractiveCommand(): CliktCommand?
 
-class KIndex : CliktCommand(name = "kindex", help = "Code Knowledge Indexer") {
-    override fun run() = Unit
+class KIndex : CliktCommand(
+    name = "kindex",
+    help = "Code Knowledge Indexer v1.0.0",
+    invokeWithoutSubcommand = true
+) {
+    init {
+        versionOption("1.0.0", names = setOf("-v", "--version"))
+    }
+    override fun run() {
+        if (currentContext.invokedSubcommand == null) {
+            getInteractiveCommand()?.main(emptyArray())
+        }
+    }
 }
 
 fun walkFiles(dir: MPFile): List<MPFile> {
