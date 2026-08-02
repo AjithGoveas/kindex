@@ -153,6 +153,12 @@ Explore codebase structure, search symbols, and list dead code with arrow keys:
 ./kindex-cli/build/install/kindex-cli/bin/kindex-cli interactive /path/to/target/project
 ```
 
+#### 4. Git Hook Automation
+Install background re-scan hooks for Git `post-commit` and `post-checkout` events:
+```bash
+./kindex-cli/build/install/kindex-cli/bin/kindex-cli hook install /path/to/target/project
+```
+
 ---
 
 ## ⚙️ Tech Stack

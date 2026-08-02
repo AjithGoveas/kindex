@@ -13,6 +13,7 @@ This document tracks the milestones, architectural upgrades, and completed phase
 | **Phase 3** | Interactive UI Console | Query CLI commands and arrow-key JLine TUI | **Complete ✅** |
 | **Phase 4** | 8 Language Support | C/C++, C#, Rust, JS/TS, Go, CSS parsers | **Complete ✅** |
 | **Phase 5** | KMP Refactor & Linker | KMP, SQLDelight DB, and call Reference Linker | **Complete ✅** |
+| **Phase 6** | Git Hook Automation | Background re-scanning on post-commit and post-checkout | **Complete ✅** |
 
 ---
 
@@ -40,6 +41,12 @@ This document tracks the milestones, architectural upgrades, and completed phase
 *   **Idiomatic KMP Scaffolding:** Migrated the codebase modules (`kindex-core`, `kindex-parser`, `kindex-storage`, `kindex-cli`) to Kotlin Multiplatform.
 *   **SQLDelight Multiplatform Storage:** Deleted Exposed ORM and migrated to SQLDelight for unified database persistence.
 *   **Post-Scan Reference Linker:** Implemented a call reference resolver in `SymbolResolver.kt` tracing local file declarations, package scopes, imports, and wildcards, building resolved `CALLS` dependencies.
+
+---
+
+### Phase 6: Git Hook Automation (`kindex hook`)
+*   **Git Lifecycle Hooks:** Added `kindex hook install` and `kindex hook uninstall` commands creating `.git/hooks/post-commit` and `.git/hooks/post-checkout` scripts.
+*   **Quiet Background Rescans:** Added `--quiet` / `-q` flag to `ScanCommand` suppressing interactive output during automatic background indexing.
 
 ---
 

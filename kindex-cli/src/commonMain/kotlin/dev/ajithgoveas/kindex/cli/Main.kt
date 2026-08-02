@@ -15,10 +15,12 @@ import dev.ajithgoveas.kindex.core.io.HashUtils
 import dev.ajithgoveas.kindex.core.io.MPFile
 import dev.ajithgoveas.kindex.storage.IndexStorage
 import dev.ajithgoveas.kindex.parser.SymbolResolver
+import com.github.ajalt.clikt.parameters.options.flag
 import dev.ajithgoveas.kindex.cli.commands.DepsCommand
 import dev.ajithgoveas.kindex.cli.commands.StatsCommand
 import dev.ajithgoveas.kindex.cli.commands.ExportCommand
 import dev.ajithgoveas.kindex.cli.commands.DeadCommand
+import dev.ajithgoveas.kindex.cli.commands.HookCommand
 
 expect fun getInteractiveCommand(): CliktCommand?
 
@@ -45,11 +47,12 @@ fun walkFiles(dir: MPFile): List<MPFile> {
 
 class ScanCommand : CliktCommand(name = "scan", help = "Scan a repository directory and index symbols") {
     private val directory: String by argument(help = "Project directory to scan")
+    private val quiet: Boolean by option("-q", "--quiet", help = "Suppress output during scanning").flag(default = false)
 
     override fun run() {
         val t = Terminal()
         val dirFile = MPFile(directory)
-        t.println(cyan("Scanning repository at: ") + bold(dirFile.absolutePath))
+        if (!quiet) t.println(cyan("Scanning repository at: ") + bold(dirFile.absolutePath))
 
         val extractors = listOf(
             KotlinJavaExtractor(),
@@ -65,7 +68,7 @@ class ScanCommand : CliktCommand(name = "scan", help = "Scan a repository direct
         val walkedFiles = walkFiles(dirFile)
             .filter { file -> extractors.any { it.supports(file) } }
 
-        t.println("Found ${walkedFiles.size} candidate source files. Checking for modifications...")
+        if (!quiet) t.println("Found ${walkedFiles.size} candidate source files. Checking for modifications...")
 
         val dbFile = MPFile("$directory/.kindex/index.db")
         val storage = IndexStorage(dbFile)
@@ -93,24 +96,24 @@ class ScanCommand : CliktCommand(name = "scan", help = "Scan a repository direct
         val walkedPathsSet = walkedFiles.map { it.path }.toSet()
         val deletedPaths = existingFiles.keys.filter { it !in walkedPathsSet }
 
-        t.println("Skipping ${unchangedFilesCount.size} unchanged files. Processing ${filesToScan.size} modified/new files. Pruning ${deletedPaths.size} deleted files...")
+        if (!quiet) t.println("Skipping ${unchangedFilesCount.size} unchanged files. Processing ${filesToScan.size} modified/new files. Pruning ${deletedPaths.size} deleted files...")
 
         if (filesToScan.isEmpty() && deletedPaths.isEmpty()) {
-            t.println(green("\n✓ Repository is already up-to-date. No changes detected.\n"))
+            if (!quiet) t.println(green("\n✓ Repository is already up-to-date. No changes detected.\n"))
             return
         }
 
         // Progress indicators while processing files
         val parseResults = mutableListOf<ParseResult>()
         if (filesToScan.isNotEmpty()) {
-            t.println("Parsing ASTs and extracting symbols...")
+            if (!quiet) t.println("Parsing ASTs and extracting symbols...")
             filesToScan.forEachIndexed { index, file ->
                 val displayIndex = index + 1
-                t.print("\r${cyan("[")}$displayIndex/${filesToScan.size}${cyan("]")} Processing: ${file.name.take(30).padEnd(30)}")
+                if (!quiet) t.print("\r${cyan("[")}$displayIndex/${filesToScan.size}${cyan("]")} Processing: ${file.name.take(30).padEnd(30)}")
                 val ext = extractors.first { it.supports(file) }
                 parseResults.add(ext.extract(file))
             }
-            t.print("\r✓ AST parsing complete.                                                        \n")
+            if (!quiet) t.print("\r✓ AST parsing complete.                                                        \n")
         }
 
         // Load all symbols to resolve imports across unchanged + modified files
@@ -122,7 +125,7 @@ class ScanCommand : CliktCommand(name = "scan", help = "Scan a repository direct
         val allSymbolsMap = (unmodifiedSymbols + newSymbols).associateBy { it.id }
 
         // Resolve imports and call references using SymbolResolver
-        t.println("Resolving cross-symbol reference edges...")
+        if (!quiet) t.println("Resolving cross-symbol reference edges...")
         val resolver = SymbolResolver()
         val fullyResolvedResults = parseResults.map { result ->
             val rawImportStrings = result.edges
@@ -158,10 +161,10 @@ class ScanCommand : CliktCommand(name = "scan", help = "Scan a repository direct
         // Save incrementally
         storage.saveResultsIncremental(fullyResolvedResults, deletedPaths)
 
-        t.println(green("\n✓ Successfully updated index in ${dbFile.path}\n"))
+        if (!quiet) t.println(green("\n✓ Successfully updated index in ${dbFile.path}\n"))
 
         // Render summary table for modified files
-        if (fullyResolvedResults.isNotEmpty()) {
+        if (!quiet && fullyResolvedResults.isNotEmpty()) {
             t.println(bold("Processed Files Summary:"))
             t.println(
                 table {
@@ -181,10 +184,12 @@ class ScanCommand : CliktCommand(name = "scan", help = "Scan a repository direct
             )
         }
 
-        val finalStats = storage.getRepositoryStats()
-        t.println("\n" + bold("Total Files in Index:") + " ${finalStats.fileCount}")
-        t.println(bold("Total Symbols in Index:") + " ${finalStats.symbolCount}")
-        t.println(bold("Total Relationships in Index:") + " ${finalStats.edgeCount}")
+        if (!quiet) {
+            val finalStats = storage.getRepositoryStats()
+            t.println("\n" + bold("Total Files in Index:") + " ${finalStats.fileCount}")
+            t.println(bold("Total Symbols in Index:") + " ${finalStats.symbolCount}")
+            t.println(bold("Total Relationships in Index:") + " ${finalStats.edgeCount}")
+        }
     }
 }
 
@@ -229,7 +234,7 @@ class QueryCommand : CliktCommand(name = "query", help = "Search indexed symbols
 }
 
 fun main(args: Array<String>) {
-    val subcommandsList = listOf("scan", "query", "deps", "stats", "export", "dead", "interactive")
+    val subcommandsList = listOf("scan", "query", "deps", "stats", "export", "dead", "hook", "interactive")
     val mappedArgs = if (args.isNotEmpty()) {
         val firstArgLower = args[0].lowercase()
         if (firstArgLower in subcommandsList) {
@@ -249,7 +254,8 @@ fun main(args: Array<String>) {
         DepsCommand(),
         StatsCommand(),
         ExportCommand(),
-        DeadCommand()
+        DeadCommand(),
+        HookCommand()
     )
     getInteractiveCommand()?.let { commands.add(it) }
 
