@@ -34,6 +34,7 @@ object Term {
 
     val BG_TITLE = bg( 17,  24,  39)  // grey-900
     val BG_SEL   = bg( 55,  48, 163)  // indigo-800
+    val BG_SEL_HOT = bg(76, 29, 149)  // purple-800 (dialogs / hot states)
     val BG_ROW   = bg( 30,  41,  59)  // slate-800
 
     val buf = StringBuilder(16384)
@@ -94,6 +95,29 @@ object Term {
 
     /** Right-pad an ANSI-coloured string to exactly [w] visible columns. */
     fun pad(s: String, w: Int): String = s + " ".repeat((w - visibleLength(s)).coerceAtLeast(0))
+
+    /** Pad [s] to exactly [w] visible columns applying [fill] as a full-width background
+     *  colour. When [fill] is empty this behaves like [pad] + RESET. The fill colour is
+     *  carried across the trailing padding (no unhighlighted gaps). */
+    fun sel(s: String, w: Int, fill: String): String {
+        if (fill.isEmpty()) return pad(fit(s, w), w) + RESET
+        var txt = fit(s, w)
+        if (txt.endsWith(RESET)) txt = txt.dropLast(RESET.length)
+        return fill + txt + " ".repeat((w - visibleLength(txt)).coerceAtLeast(0)) + RESET
+    }
+
+    /** Linear two-colour gradient across the characters of [s]. */
+    fun gradient(s: String, c1: Triple<Int, Int, Int>, c2: Triple<Int, Int, Int>): String {
+        val n = s.length
+        if (n == 0) return s
+        return s.mapIndexed { i, ch ->
+            val t = if (n == 1) 0.0 else i.toDouble() / (n - 1)
+            val r = (c1.first + (c2.first - c1.first) * t).toInt()
+            val g = (c1.second + (c2.second - c1.second) * t).toInt()
+            val b = (c1.third + (c2.third - c1.third) * t).toInt()
+            fg(r, g, b) + ch
+        }.joinToString("") + RESET
+    }
 }
 
 /** A fully-rendered content pane shown in the right-hand side of the TUI. */

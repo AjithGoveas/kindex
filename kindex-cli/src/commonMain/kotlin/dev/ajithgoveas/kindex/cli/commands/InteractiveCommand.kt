@@ -20,6 +20,7 @@ import dev.ajithgoveas.kindex.core.model.Edge
 import dev.ajithgoveas.kindex.core.model.RelationType
 import dev.ajithgoveas.kindex.core.model.Symbol
 import dev.ajithgoveas.kindex.storage.IndexStorage
+import dev.ajithgoveas.kindex.storage.RepositoryStats
 
 // ─── Application model ───────────────────────────────────────────────────────
 
@@ -69,6 +70,12 @@ class InteractiveCommand : CliktCommand(
     private var inputBuf = ""
     private var quitFlag = false
 
+    private var statsCache: RepositoryStats? = null
+    private var homeLinesCache: List<String> = emptyList()
+    private var covered: BooleanArray = BooleanArray(0)
+    private var lastSize = 0 to 0
+    private var firstRender = true
+
     private val termW: Int get() = getTerminalSize().first
     private val termH: Int get() = getTerminalSize().second
     private val t: Term get() = Term
@@ -91,6 +98,8 @@ class InteractiveCommand : CliktCommand(
 
         storage = IndexStorage(dbFile)
         screens = TuiScreens(rootDir, storage)
+        statsCache = runCatching { storage.getRepositoryStats() }.getOrNull()
+        homeLinesCache = homeLines()
         enableRawMode()
         print(Term.ALT_ON + Term.HIDE + Term.CLEAR)
 
@@ -263,31 +272,94 @@ class InteractiveCommand : CliktCommand(
             t.flush(); return
         }
         t.buf.clear()
-        t.w(t.CLEAR)
+        if (covered.size <= h) covered = BooleanArray(h + 1)
+        if (firstRender || lastSize != (w to h)) {
+            t.w(t.CLEAR)
+            firstRender = false
+            lastSize = w to h
+        } else {
+            t.w("\u001B[H")
+        }
         drawFrame(w, h)
         drawHeader(w)
         val bodyTop = 3
         val bodyBot = h - 2
         drawMenu(bodyTop, bodyBot, w)
         drawContent(bodyTop, bodyBot, w)
+        for (y in bodyTop..bodyBot) if (!covered[y]) contentRow(y, "", w)
         drawFooter(w, h)
         t.flush()
     }
 
-    /** Emit a full-width bordered row (used for menu, header, footer regions). */
+    /** Emit a full-width bordered row (used for header, footer regions). */
     private fun putLine(y: Int, s: String, w: Int, fill: String = "") {
         t.w(t.at(y, 1))
-        t.w("│$fill" + t.pad(t.fit(s, w - 2), w - 2) + "${t.RESET}│")
+        t.w("│" + Term.sel(s, w - 2, fill) + "│")
+    }
+
+    /** Emit a menu-pane row: left border, menu text, divider at the pane split, right border. */
+    private fun menuRow(y: Int, s: String, w: Int, fill: String = "", divider: String = "│") {
+        val mw = MENU_W - 2
+        t.w(t.at(y, 1)); t.w("│")
+        t.w(Term.sel(s, mw, fill))
+        t.w(t.at(y, MENU_W + 2)); t.w(divider)
+        t.w(t.at(y, w)); t.w("│")
     }
 
     /** Emit a content-region row: left border, menu divider, content text, right border. */
-    private fun contentRow(y: Int, s: String, w: Int, fill: String = "") {
+    private fun contentRow(y: Int, s: String, w: Int, fill: String = "", marker: Boolean = false) {
+        if (y in covered.indices) covered[y] = true
         val cw = w - MENU_W - 3
+        val divider = if (marker) "${t.ACCENT2}${t.BOLD}┃${t.RESET}" else "│"
+        t.w(t.at(y, 1)); t.w("│")
+        t.w(t.at(y, MENU_W + 2)); t.w(divider)
+        t.w(t.at(y, MENU_W + 3))
+        if (marker) {
+            val mw = (cw - 2).coerceAtLeast(1)
+            t.w(Term.sel("${t.ACCENT2}${t.BOLD}▸${t.RESET} $s", mw, fill))
+        } else {
+            t.w(Term.sel(s, cw, fill))
+        }
+        t.w(t.at(y, w)); t.w("│")
+    }
+
+    /** Emit a content-region title row with a filled chip and right-aligned tag. */
+    private fun titleRow(y: Int, title: String, w: Int, tag: String = "") {
+        if (y in covered.indices) covered[y] = true
+        val cw = w - MENU_W - 3
+        val left = " ${t.ACCENT2}${t.BOLD}$title${t.RESET}"
+        val right = if (tag.isNotEmpty()) " ${t.MUTED}$tag${t.RESET}" else ""
+        val padN = cw - t.visibleLength(left) - t.visibleLength(right)
         t.w(t.at(y, 1)); t.w("│")
         t.w(t.at(y, MENU_W + 2)); t.w("│")
         t.w(t.at(y, MENU_W + 3))
-        t.w("$fill" + t.pad(t.fit(s, cw), cw) + "${t.RESET}")
+        t.w(t.BG_TITLE + left + " ".repeat(padN.coerceAtLeast(0)) + right + t.RESET)
         t.w(t.at(y, w)); t.w("│")
+    }
+
+    /** A small keycap chip used in hint bars and dialogs. */
+    private fun keycap(k: String) = "${t.BG_ROW}${t.BRIGHT}${t.BOLD}$k${t.RESET}"
+
+    /** Vertical scrollbar drawn in the rightmost content column when a pane overflows. */
+    private fun drawScrollbar(bodyTop: Int, viewH: Int, total: Int, scroll: Int, w: Int) {
+        if (total <= viewH) return
+        val col = w - 1
+        val thumbH = (viewH * viewH / total).coerceIn(1, viewH)
+        val maxScroll = total - viewH
+        val thumbPos = if (maxScroll <= 0) 0 else (scroll * (viewH - thumbH) / maxScroll).coerceIn(0, viewH - thumbH)
+        for (i in 0 until viewH) {
+            val inThumb = i >= thumbPos && i < thumbPos + thumbH
+            t.w(t.at(bodyTop + i, col))
+            t.w(if (inThumb) "${t.BG_ROW}${t.ACCENT2}▐${t.RESET}" else "${t.MUTED}▐${t.RESET}")
+        }
+    }
+
+    private fun stateTag(): String = when (state) {
+        State.Home -> "MENU"
+        is State.Content -> "BROWSE"
+        is State.Input -> "INPUT"
+        is State.Export -> "EXPORT"
+        is State.Confirm -> "CONFIRM"
     }
 
     private fun drawFrame(w: Int, h: Int) {
@@ -297,12 +369,14 @@ class InteractiveCommand : CliktCommand(
 
     private fun drawHeader(w: Int) {
         val repoName = rootDir.name.ifEmpty { rootDir.path.substringAfterLast('/').substringAfterLast('\\') }
-        val left = "${t.ACCENT}${t.BOLD}◆ KINDEX${t.RESET} ${t.MUTED}v1.0.0${t.RESET}"
-        val right = "${t.MUTED}$repoName${t.RESET}"
+        val logo = "◆ " + Term.gradient("KINDEX", Triple(139, 92, 246), Triple(34, 211, 238))
+        val left = "${logo} ${t.MUTED}v1.0.0${t.RESET}"
+        val mode = stateTag()
+        val right = "${keycap(mode)}  ${t.MUTED}$repoName${t.RESET}"
         val padLen = (w - 2 - t.visibleLength(right)).coerceAtLeast(t.visibleLength(left))
         putLine(1, t.pad(t.fit(left, padLen), padLen) + right, w, t.BG_TITLE)
 
-        val stats = runCatching { storage.getRepositoryStats() }.getOrNull()
+        val stats = statsCache
         val left2 = if (stats != null) {
             "  ${t.MUTED}files ${t.RESET}${t.CYAN}${stats.fileCount}${t.RESET}  ${t.MUTED}symbols ${t.RESET}${t.CYAN}${stats.symbolCount}${t.RESET}  ${t.MUTED}edges ${t.RESET}${t.CYAN}${stats.edgeCount}${t.RESET}"
         } else {
@@ -314,20 +388,23 @@ class InteractiveCommand : CliktCommand(
     }
 
     private fun drawMenu(y0: Int, y1: Int, w: Int) {
-        putLine(y0, " ${t.MUTED}${t.BOLD}M E N U${t.RESET}", w)
+        for (yy in y0..y1) menuRow(yy, " ", w, t.BG_ROW)
+        menuRow(y0, " ${t.MUTED}${t.BOLD}M E N U${t.RESET}", w, t.BG_ROW)
         var y = y0 + 1
         MENU.forEachIndexed { i, item ->
             if (y > y1 - 2) return@forEachIndexed
             val active = state is State.Home && i == menuSel
             val num = (i + 1).toString().padStart(2)
-            val numPart = if (active) "${t.ACCENT2}${t.BOLD}▸${t.RESET}" else "${t.MUTED}${t.BOLD}$num${t.RESET}"
+            val numPart = if (active) "${t.ACCENT2}${t.BOLD}$num${t.RESET}" else "${t.MUTED}${t.BOLD}$num${t.RESET}"
+            val iconPart = if (active) "${t.ACCENT2}${item.icon}" else "${t.MUTED}${item.icon}"
             val labelPart = if (active) "${t.BRIGHT}${t.BOLD}${item.label}" else "${t.BRIGHT}${item.label}"
-            val rowStr = " $numPart ${item.icon} $labelPart"
-            putLine(y, rowStr, w, if (active) t.BG_SEL else "")
+            val rowStr = " $numPart $iconPart $labelPart"
+            val divider = if (active) "${t.ACCENT2}${t.BOLD}┃${t.RESET}" else "│"
+            menuRow(y, rowStr, w, if (active) t.BG_SEL else t.BG_ROW, divider)
             y++
         }
         if (y1 - 1 > y0 + 1) {
-            putLine(y1 - 1, " ${t.DIM}${MENU[menuSel].desc}${t.RESET}", w)
+            menuRow(y1 - 1, " ${t.DIM}${MENU[menuSel].desc}${t.RESET}", w, t.BG_ROW)
         }
     }
 
@@ -335,8 +412,8 @@ class InteractiveCommand : CliktCommand(
         val viewRows = y1 - y0 + 1
         when (val s = state) {
             is State.Home -> {
-                val lines = homeLines()
-                contentRow(y0, " ${t.ACCENT2}${t.BOLD}Welcome${t.RESET}", w)
+                val lines = homeLinesCache
+                titleRow(y0, "Welcome", w)
                 contentRow(y0 + 1, " ${t.MUTED}${"─".repeat((w - MENU_W - 5).coerceAtLeast(0))}${t.RESET}", w)
                 var i = 0
                 while (i < viewRows - 2 && i < lines.size) {
@@ -347,7 +424,8 @@ class InteractiveCommand : CliktCommand(
 
             is State.Content -> {
                 val model = s.model
-                contentRow(y0, " ${t.ACCENT2}${t.BOLD}${model.title}${t.RESET}", w)
+                val tag = if (model.selectable.isNotEmpty()) "${model.selectable.size} items" else ""
+                titleRow(y0, model.title, w, tag)
                 contentRow(y0 + 1, " ${t.MUTED}${"─".repeat((w - MENU_W - 5).coerceAtLeast(0))}${t.RESET}", w)
                 val bodyTop = y0 + 2
                 val bodyRows = viewRows - 2
@@ -356,9 +434,11 @@ class InteractiveCommand : CliktCommand(
                 while (i < bodyRows) {
                     val idx = s.scroll + i
                     if (idx >= model.rows.size) break
-                    contentRow(bodyTop + i, model.rows[idx], w, if (idx == selRow) t.BG_SEL else "")
+                    val selected = idx == selRow
+                    contentRow(bodyTop + i, model.rows[idx], w, if (selected) t.BG_SEL else "", marker = selected)
                     i++
                 }
+                drawScrollbar(bodyTop, bodyRows, model.rows.size, s.scroll, w)
             }
 
             is State.Input -> drawInput(y0, y1, w, s)
@@ -369,30 +449,30 @@ class InteractiveCommand : CliktCommand(
 
     private fun drawInput(y0: Int, y1: Int, w: Int, s: State.Input) {
         val cw = w - MENU_W - 3
-        contentRow(y0, " ${t.ACCENT2}${t.BOLD}${s.prompt}${t.RESET}", w)
+        titleRow(y0, s.prompt, w, "INPUT")
         contentRow(y0 + 1, " ${t.MUTED}${"─".repeat((cw - 4).coerceAtLeast(0))}${t.RESET}", w)
         val boxY = y0 + 3
         val boxW = (cw - 6).coerceAtLeast(16)
         contentRow(boxY, " ${t.MUTED}╭${"─".repeat(boxW)}╮${t.RESET}", w)
-        contentRow(boxY + 1, " ${t.MUTED}│${t.RESET} ${t.BRIGHT}$inputBuf${t.ACCENT}▌${t.RESET}${" ".repeat((boxW - inputBuf.length - 1).coerceAtLeast(0))}${t.MUTED}│${t.RESET}", w)
+        contentRow(boxY + 1, " ${t.MUTED}│${t.RESET} ${t.ACCENT2}${t.BOLD}❯${t.RESET} ${t.BRIGHT}${t.fit(inputBuf, boxW - 4)}${t.ACCENT}▌${t.RESET}", w)
         contentRow(boxY + 2, " ${t.MUTED}╰${"─".repeat(boxW)}╯${t.RESET}", w)
-        contentRow(boxY + 4, " ${t.DIM}Enter to confirm · Esc to cancel${t.RESET}", w)
+        contentRow(boxY + 4, " ${t.DIM}Type to search · Enter confirms · Esc cancels${t.RESET}", w)
     }
 
     private fun drawExport(y0: Int, y1: Int, w: Int, s: State.Export) {
         val cw = w - MENU_W - 3
-        contentRow(y0, " ${t.ACCENT2}${t.BOLD}Export Diagrams${t.RESET}", w)
+        titleRow(y0, "Export Diagrams", w, "EXPORT")
         contentRow(y0 + 1, " ${t.MUTED}${"─".repeat((cw - 4).coerceAtLeast(0))}${t.RESET}", w)
-        contentRow(y0 + 3, " ${t.BRIGHT}${t.BOLD}Granularity${t.RESET}", w)
+        contentRow(y0 + 3, " ${t.BRIGHT}${t.BOLD}Granularity${t.RESET}  ${t.DIM}← → or g to change${t.RESET}", w)
         var line = "  "
         GRANS.forEachIndexed { i, g ->
-            line += if (i == s.gran) " ${t.BG_SEL}${t.BOLD}${t.ACCENT2}$g${t.RESET}${t.BG_SEL} ${t.RESET} " else " ${t.MUTED}$g${t.RESET} "
+            line += if (i == s.gran) "${t.BG_SEL} ● ${t.ACCENT2}${t.BOLD}$g${t.RESET}${t.BG_SEL} ${t.RESET} " else " ${t.MUTED}$g${t.RESET} "
         }
         contentRow(y0 + 4, line, w)
-        contentRow(y0 + 6, " ${t.BRIGHT}${t.BOLD}Format${t.RESET}", w)
+        contentRow(y0 + 6, " ${t.BRIGHT}${t.BOLD}Format${t.RESET}  ${t.DIM}m / d / j${t.RESET}", w)
         line = "  "
         FMTS.forEachIndexed { i, f ->
-            line += if (i == s.fmt) " ${t.BG_SEL}${t.BOLD}${t.ACCENT2}$f${t.RESET}${t.BG_SEL} ${t.RESET} " else " ${t.MUTED}$f${t.RESET} "
+            line += if (i == s.fmt) "${t.BG_SEL} ● ${t.ACCENT2}${t.BOLD}$f${t.RESET}${t.BG_SEL} ${t.RESET} " else " ${t.MUTED}$f${t.RESET} "
         }
         contentRow(y0 + 7, line, w)
         val ext = if (FMTS[s.fmt] == "dot") "dot" else if (FMTS[s.fmt] == "json") "json" else "mmd"
@@ -402,19 +482,32 @@ class InteractiveCommand : CliktCommand(
 
     private fun drawConfirm(y0: Int, y1: Int, w: Int, s: State.Confirm) {
         val cw = w - MENU_W - 3
-        val bw = (s.prompt.length + 12).coerceIn(24, (cw - 6).coerceAtLeast(24))
+        val bw = (s.prompt.length + 14).coerceIn(28, (cw - 6).coerceAtLeast(28))
         val bx = MENU_W + 3 + ((cw - bw) / 2).coerceAtLeast(0)
         val by = y0 + (y1 - y0) / 2 - 2
-        t.w(t.at(by, bx));     t.w("${t.BG_SEL}${" ".repeat(bw)}${t.RESET}")
-        t.w(t.at(by + 1, bx)); t.w("${t.BG_SEL} ${t.BRIGHT}${s.prompt.padEnd(bw - 2)} ${t.RESET}")
-        t.w(t.at(by + 2, bx)); t.w("${t.BG_SEL} ${t.MUTED}[Y]es   [N]o${t.RESET}${" ".repeat((bw - 12).coerceAtLeast(0))}")
-        t.w(t.at(by + 3, bx)); t.w("${t.BG_SEL}${" ".repeat(bw)}${t.RESET}")
+        for (row in by..by + 4) {
+            if (row in covered.indices) covered[row] = true
+            t.w(t.at(row, MENU_W + 3)); t.w(" ".repeat(cw))
+        }
+        t.w(t.at(by, bx));     t.w(Term.sel("", bw, t.BG_SEL_HOT))
+        t.w(t.at(by + 1, bx)); t.w(Term.sel(" ${t.MUTED}${t.BOLD}CONFIRM${t.RESET}", bw, t.BG_SEL_HOT))
+        t.w(t.at(by + 2, bx)); t.w(Term.sel(" ${t.WARN}${t.BOLD}${s.prompt}${t.RESET}", bw, t.BG_SEL_HOT))
+        t.w(t.at(by + 3, bx)); t.w(Term.sel("  ${keycap("Y")}es   ${keycap("N")}o", bw, t.BG_SEL_HOT))
+        t.w(t.at(by + 4, bx)); t.w(Term.sel("", bw, t.BG_SEL_HOT))
     }
 
     private fun drawFooter(w: Int, h: Int) {
         val status = when (val s = state) {
             is State.Home -> MENU[menuSel].desc
-            is State.Content -> s.model.status
+            is State.Content -> {
+                val base = s.model.status
+                val view = contentViewRows() - 2
+                val extra = buildString {
+                    if (s.model.selectable.isNotEmpty()) append(" · ${s.sel + 1}/${s.model.selectable.size}")
+                    if (s.model.rows.size > view) append(" · ${s.scroll + 1}-${s.scroll + view}/${s.model.rows.size}")
+                }
+                base + extra
+            }
             is State.Input -> s.prompt
             is State.Export -> s.msg ?: "Select granularity & format, then press Enter"
             is State.Confirm -> s.prompt
@@ -422,19 +515,19 @@ class InteractiveCommand : CliktCommand(
         putLine(h - 1, " ${t.DIM}$status${t.RESET}", w)
 
         val hints = when (val s = state) {
-            State.Home -> listOf("[↑↓] Navigate", "[↵] Open", "[1-9] Jump", "[Esc/q] Quit")
-            is State.Content -> listOf("[↑↓] Move", "[PgUp/PgDn] Scroll", "[↵] Open", "[Esc] Back", "[q] Quit")
-            is State.Input -> listOf("Type…", "[↵] Confirm", "[Esc] Cancel")
-            is State.Export -> listOf("[g] Granularity", "[m][d][j] Format", "[↵] Export", "[Esc] Back")
-            is State.Confirm -> listOf("[y] Yes", "[n] No")
+            State.Home -> listOf("↑↓" to "Navigate", "↵" to "Open", "1-9" to "Jump", "Esc/q" to "Quit")
+            is State.Content -> listOf("↑↓" to "Move", "PgDn" to "Scroll", "↵" to "Open", "Esc" to "Back", "q" to "Quit")
+            is State.Input -> listOf("↵" to "Confirm", "Esc" to "Cancel")
+            is State.Export -> listOf("g" to "Granularity", "m/d/j" to "Format", "↵" to "Export", "Esc" to "Back")
+            is State.Confirm -> listOf("y" to "Yes", "n" to "No")
         }
-        val bar = hints.joinToString("  ") { "${t.MUTED}$it${t.RESET}" }
+        val bar = hints.joinToString("  ") { (k, lbl) -> "${keycap(k)} ${t.DIM}$lbl${t.RESET}" }
         putLine(h, bar, w, t.BG_TITLE)
     }
 
     private fun homeLines(): List<String> {
         return try {
-            val s = storage.getRepositoryStats()
+            val s = statsCache ?: storage.getRepositoryStats()
             listOf(
                 "",
                 "  ${t.ACCENT2}${t.BOLD}Repository Overview${t.RESET}",
