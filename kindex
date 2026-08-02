@@ -1,0 +1,8 @@
+#!/bin/sh
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$SCRIPT_DIR"
+if [ ! -f "$ROOT_DIR/gradlew" ]; then
+    ROOT_DIR="$SCRIPT_DIR/.."
+fi
+
+exec "$ROOT_DIR/gradlew" :kindex-cli:jvmRun --args="$*" -q

@@ -84,15 +84,12 @@ class JavaScriptExtractor : BaseExtractor("JavaScript/TypeScript", listOf("js", 
                 edges.add(Edge(file.path, className, RelationType.CONTAINS))
                 classLineRanges.add(ClassLineRange(className, classNode.getStartPoint().getRow() + 1, classNode.getEndPoint().getRow() + 1))
 
-                // JS/TS inheritance
-                val braceIdx = sourceCode.indexOf('{', classNode.getStartByte())
-                val headerText = if (braceIdx != -1 && braceIdx > classNode.getStartByte()) {
-                    sourceCode.substring(classNode.getStartByte(), braceIdx)
-                } else {
-                    sourceCode.substring(classNode.getStartByte(), classNode.getEndByte())
-                }
+                val sourceBytes = sourceCode.encodeToByteArray()
+                val startB = classNode.getStartByte().coerceIn(0, sourceBytes.size)
+                val endB = classNode.getEndByte().coerceIn(startB, sourceBytes.size)
+                val headerText = sourceBytes.decodeToString(startB, endB).substringBefore("{")
                 if (headerText.contains("extends")) {
-                    val extended = headerText.substringAfter("extends").trim().substringBefore("{").trim()
+                    val extended = headerText.substringAfter("extends").trim().substringBefore(" ").substringBefore("{").trim()
                     if (extended.isNotEmpty()) {
                         edges.add(Edge(className, extended, RelationType.EXTENDS))
                     }

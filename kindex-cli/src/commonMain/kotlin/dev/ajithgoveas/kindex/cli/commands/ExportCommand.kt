@@ -32,7 +32,16 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
     override fun run() {
         val t = Terminal()
         val directory = dirOpt ?: dirArg ?: "."
-        val rootDir = dev.ajithgoveas.kindex.core.io.RepositoryRootResolver.findRepositoryRoot(MPFile(directory))
+        val targetDir = MPFile(directory)
+        val currentWorkspaceDir = MPFile(".")
+        val rootDir = dev.ajithgoveas.kindex.core.io.RepositoryRootResolver.findRepositoryRoot(currentWorkspaceDir)
+        try {
+            dev.ajithgoveas.kindex.core.io.RepositoryGuardrail.assertWithinRepository(targetDir, rootDir)
+            outputOpt?.let { dev.ajithgoveas.kindex.core.io.RepositoryGuardrail.assertWithinRepository(MPFile(it), rootDir) }
+        } catch (e: dev.ajithgoveas.kindex.core.io.RepositoryBoundaryException) {
+            t.println(red(e.message ?: "Security Boundary Error"))
+            return
+        }
         val dbFile = MPFile("${rootDir.path}/.kindex/index.db")
         if (!dbFile.exists) {
             t.println(red("No index found. Run 'kindex scan $directory' first."))

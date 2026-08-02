@@ -53,6 +53,15 @@ class ScanCommand : CliktCommand(name = "scan", help = "Scan a repository direct
     override fun run() {
         val t = Terminal()
         val dirFile = MPFile(directory)
+        val currentWorkspaceDir = MPFile(".")
+        val rootDir = dev.ajithgoveas.kindex.core.io.RepositoryRootResolver.findRepositoryRoot(currentWorkspaceDir)
+        try {
+            dev.ajithgoveas.kindex.core.io.RepositoryGuardrail.assertWithinRepository(dirFile, rootDir)
+        } catch (e: dev.ajithgoveas.kindex.core.io.RepositoryBoundaryException) {
+            t.println(red(e.message ?: "Security Boundary Error"))
+            return
+        }
+        val dbFile = MPFile("${rootDir.path}/.kindex/index.db")
         if (!quiet) t.println(cyan("Scanning repository at: ") + bold(dirFile.absolutePath))
 
         val extractors = listOf(
@@ -71,8 +80,6 @@ class ScanCommand : CliktCommand(name = "scan", help = "Scan a repository direct
 
         if (!quiet) t.println("Found ${walkedFiles.size} candidate source files. Checking for modifications...")
 
-        val rootDir = dev.ajithgoveas.kindex.core.io.RepositoryRootResolver.findRepositoryRoot(dirFile)
-        val dbFile = MPFile("${rootDir.path}/.kindex/index.db")
         val storage = IndexStorage(dbFile)
 
         // Load existing index file metadata
@@ -203,7 +210,15 @@ class QueryCommand : CliktCommand(name = "query", help = "Search indexed symbols
     override fun run() {
         val t = Terminal()
         val directory = dirOpt ?: dirArg ?: "."
-        val rootDir = dev.ajithgoveas.kindex.core.io.RepositoryRootResolver.findRepositoryRoot(MPFile(directory))
+        val targetDir = MPFile(directory)
+        val currentWorkspaceDir = MPFile(".")
+        val rootDir = dev.ajithgoveas.kindex.core.io.RepositoryRootResolver.findRepositoryRoot(currentWorkspaceDir)
+        try {
+            dev.ajithgoveas.kindex.core.io.RepositoryGuardrail.assertWithinRepository(targetDir, rootDir)
+        } catch (e: dev.ajithgoveas.kindex.core.io.RepositoryBoundaryException) {
+            t.println(red(e.message ?: "Security Boundary Error"))
+            return
+        }
         val dbFile = MPFile("${rootDir.path}/.kindex/index.db")
         if (!dbFile.exists) {
             t.println(red("No index found. Run 'kindex scan $directory' first."))
