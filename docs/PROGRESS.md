@@ -14,6 +14,7 @@ This document tracks the milestones, architectural upgrades, and completed phase
 | **Phase 4** | 8 Language Support | C/C++, C#, Rust, JS/TS, Go, CSS parsers | **Complete ✅** |
 | **Phase 5** | KMP Refactor & Linker | KMP, SQLDelight DB, and call Reference Linker | **Complete ✅** |
 | **Phase 6** | Git Hook Automation | Background re-scanning on post-commit and post-checkout | **Complete ✅** |
+| **Phase 7** | SQLite FTS5 Search Engine | Tokenized camelCase/snake_case fuzzy symbol search | **Complete ✅** |
 
 ---
 
@@ -48,6 +49,13 @@ This document tracks the milestones, architectural upgrades, and completed phase
 *   **Git Lifecycle Hooks:** Added `install`, `uninstall`, and `status` actions supporting `post-commit`, `post-checkout`, `post-merge`, and `post-rewrite` hooks.
 *   **Non-Blocking Detached Execution:** Embedded background subshell (`(...) >/dev/null 2>&1 &`) in generated shell scripts so Git operations complete instantly without blocking.
 *   **Quiet Background Rescans:** Added `--quiet` / `-q` flag to `ScanCommand` suppressing interactive output during automatic background indexing.
+
+---
+
+### Phase 7: SQLite FTS5 Search Engine & Tokenizer
+*   **Full-Text Search Virtual Table:** Created `symbols_fts` SQLite FTS5 virtual table for fast, tokenized symbol indexing.
+*   **Identifier Tokenizer:** Built `SymbolTokenizer` splitting identifiers on camelCase and snake_case boundaries (`UserServiceImpl` -> `User`, `Service`, `Impl`).
+*   **UTF-8 Byte Slicing Safety:** Updated `BaseExtractor` to slice source code by UTF-8 byte array indices, preventing string index out-of-bounds exceptions on multi-byte characters.
 
 ---
 

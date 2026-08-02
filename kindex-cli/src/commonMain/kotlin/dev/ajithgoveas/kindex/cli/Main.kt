@@ -3,6 +3,7 @@ package dev.ajithgoveas.kindex.cli
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.parameters.arguments.argument
+import com.github.ajalt.clikt.parameters.arguments.optional
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.mordant.rendering.TextColors.*
@@ -195,10 +196,12 @@ class ScanCommand : CliktCommand(name = "scan", help = "Scan a repository direct
 
 class QueryCommand : CliktCommand(name = "query", help = "Search indexed symbols in the project") {
     private val term by argument(help = "Symbol name or substring to search for")
-    private val directory by option("-d", "--dir", help = "Project directory").default(".")
+    private val dirArg by argument(name = "dir", help = "Project directory").optional()
+    private val dirOpt by option("-d", "--dir", help = "Project directory")
 
     override fun run() {
         val t = Terminal()
+        val directory = dirOpt ?: dirArg ?: "."
         val dbFile = MPFile("$directory/.kindex/index.db")
         if (!dbFile.exists) {
             t.println(red("No index found. Run 'kindex scan $directory' first."))

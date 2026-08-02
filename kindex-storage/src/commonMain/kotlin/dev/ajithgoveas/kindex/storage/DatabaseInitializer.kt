@@ -7,6 +7,7 @@ import dev.ajithgoveas.kindex.core.model.Edge
 import dev.ajithgoveas.kindex.core.model.RelationType
 import dev.ajithgoveas.kindex.core.io.MPFile
 import dev.ajithgoveas.kindex.storage.db.KIndexDatabase
+import app.cash.sqldelight.db.QueryResult
 
 data class RepositoryStats(
     val fileCount: Long,
@@ -16,6 +17,19 @@ data class RepositoryStats(
     val functionCount: Long,
     val edgeCount: Long
 )
+
+object SymbolTokenizer {
+    fun tokenize(name: String): String {
+        val tokens = mutableSetOf<String>()
+        tokens.add(name)
+
+        val parts = name.split(Regex("(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|_|\\$|::|\\."))
+            .filter { it.isNotBlank() }
+
+        tokens.addAll(parts)
+        return tokens.joinToString(" ")
+    }
+}
 
 class IndexStorage(dbPath: MPFile) {
     private val driver = DatabaseDriverFactory(dbPath).createDriver()
@@ -30,6 +44,27 @@ class IndexStorage(dbPath: MPFile) {
         } catch (e: Exception) {
             // Ignore PRAGMA execution errors if some drivers restrict them
         }
+
+        // Initialize SQLite FTS5 Virtual Table for tokenized fuzzy searches
+        try {
+            driver.execute(
+                null,
+                """
+                CREATE VIRTUAL TABLE IF NOT EXISTS symbols_fts USING fts5(
+                    symbolId,
+                    name,
+                    tokens,
+                    type,
+                    filePath,
+                    packageName,
+                    lineNumber
+                );
+                """.trimIndent(),
+                0
+            )
+        } catch (e: Exception) {
+            // Ignore if FTS5 is unsupported on a specific platform
+        }
     }
 
     fun saveResults(results: List<ParseResult>) {
@@ -42,12 +77,24 @@ class IndexStorage(dbPath: MPFile) {
                 queries.deleteFile(path)
                 queries.clearFileData(path)
                 queries.clearFileRelations(path)
+                try {
+                    val sanitizedPath = path.replace("'", "''")
+                    driver.execute(null, "DELETE FROM symbols_fts WHERE filePath = '$sanitizedPath';", 0)
+                } catch (e: Exception) {
+                    // Ignore FTS errors
+                }
             }
 
             for (result in results) {
                 queries.deleteFile(result.sourceFile.path)
                 queries.clearFileData(result.sourceFile.path)
                 queries.clearFileRelations(result.sourceFile.path)
+                try {
+                    val sanitizedPath = result.sourceFile.path.replace("'", "''")
+                    driver.execute(null, "DELETE FROM symbols_fts WHERE filePath = '$sanitizedPath';", 0)
+                } catch (e: Exception) {
+                    // Ignore FTS errors
+                }
 
                 queries.insertFile(
                     id = result.sourceFile.path,
@@ -67,6 +114,25 @@ class IndexStorage(dbPath: MPFile) {
                         packageName = sym.packageName,
                         lineNumber = sym.lineNumber.toLong()
                     )
+
+                    try {
+                        val tokens = SymbolTokenizer.tokenize(sym.name)
+                        driver.execute(
+                            null,
+                            "INSERT INTO symbols_fts(symbolId, name, tokens, type, filePath, packageName, lineNumber) VALUES (?, ?, ?, ?, ?, ?, ?);",
+                            7
+                        ) {
+                            bindString(0, sym.id)
+                            bindString(1, sym.name)
+                            bindString(2, tokens)
+                            bindString(3, sym.type.name)
+                            bindString(4, sym.filePath)
+                            bindString(5, sym.packageName ?: "")
+                            bindLong(6, sym.lineNumber.toLong())
+                        }
+                    } catch (e: Exception) {
+                        // Ignore FTS error
+                    }
                 }
 
                 for (edge in result.edges) {
@@ -87,6 +153,57 @@ class IndexStorage(dbPath: MPFile) {
     }
 
     fun searchSymbols(term: String): List<Symbol> {
+        val trimmed = term.trim()
+        if (trimmed.isNotEmpty()) {
+            try {
+                val formattedQuery = trimmed.split(Regex("\\s+")).joinToString(" ") { "$it*" }
+                val ftsQuerySql = """
+                    SELECT symbolId, name, type, filePath, packageName, lineNumber 
+                    FROM symbols_fts 
+                    WHERE tokens MATCH ? 
+                    LIMIT 100
+                """.trimIndent()
+
+                val queryResult = driver.executeQuery(
+                    identifier = null,
+                    sql = ftsQuerySql,
+                    mapper = { cursor ->
+                        val list = mutableListOf<Symbol>()
+                        while (cursor.next().value) {
+                            val id = cursor.getString(0)!!
+                            val name = cursor.getString(1)!!
+                            val typeStr = cursor.getString(2)!!
+                            val filePath = cursor.getString(3)!!
+                            val pkg = cursor.getString(4)
+                            val line = cursor.getLong(5)?.toInt() ?: 1
+                            list.add(
+                                Symbol(
+                                    id = id,
+                                    name = name,
+                                    type = SymbolType.valueOf(typeStr),
+                                    filePath = filePath,
+                                    packageName = if (pkg.isNullOrEmpty()) null else pkg,
+                                    lineNumber = line
+                                )
+                            )
+                        }
+                        QueryResult.Value(list)
+                    },
+                    parameters = 1,
+                    binders = {
+                        bindString(0, formattedQuery)
+                    }
+                )
+
+                val ftsResults = queryResult.value
+                if (ftsResults.isNotEmpty()) {
+                    return ftsResults
+                }
+            } catch (e: Exception) {
+                // Fall back to standard SQL LIKE query
+            }
+        }
+
         return queries.searchSymbols("%$term%").executeAsList().map {
             Symbol(
                 id = it.id,

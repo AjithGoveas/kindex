@@ -47,14 +47,14 @@ Enable zero-dependency standalone native binaries for Windows (`mingwX64`), macO
 
 ---
 
-### 🔍 Option 2: SQLite FTS5 Tokenized Search Engine
+### 🔍 Option 2: SQLite FTS5 Tokenized Search Engine [COMPLETED ✅]
 
 Migrate symbol query lookup from simple `LIKE` statements to SQLite FTS5 for fast, tokenized fuzzy searches on large codebases.
 
 * **Key Deliverables:**
-  - [ ] Implement FTS5 virtual tables inside `kindex-storage`.
-  - [ ] Index symbol paths and names using token delimiters like `_` and camelCase transitions (e.g. splitting `UserServiceImpl` into `User`, `Service`, `Impl`).
-  - [ ] Expose fuzzy search filters in the CLI command (`kindex query UserServ`).
+  - [x] Implement `symbols_fts` SQLite FTS5 virtual tables inside `kindex-storage`.
+  - [x] Index symbol paths and names using token delimiters like `_` and camelCase transitions (e.g. splitting `UserServiceImpl` into `User`, `Service`, `Impl`).
+  - [x] Expose tokenized fuzzy search in CLI `query` command (`kindex query Resolver` -> matches `SymbolResolver`).
 
 ---
 

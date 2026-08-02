@@ -141,10 +141,10 @@ Index a target repository and generate the SQLite database.
 ./kindex-cli/build/install/kindex-cli/bin/kindex-cli scan /path/to/target/project
 ```
 
-#### 2. Query Symbols
-Find where classes or functions are declared.
+#### 2. Query Symbols (SQLite FTS5 Tokenized Search)
+Find where classes or functions are declared using SQLite FTS5 full-text search with camelCase and sub-word tokenization (e.g. searching `Resolver` matches `SymbolResolver`):
 ```bash
-./kindex-cli/build/install/kindex-cli/bin/kindex-cli query -d /path/to/target/project "MySymbol"
+./kindex-cli/build/install/kindex-cli/bin/kindex-cli query "Resolver" /path/to/target/project
 ```
 
 #### 3. Interactive TUI Dashboard

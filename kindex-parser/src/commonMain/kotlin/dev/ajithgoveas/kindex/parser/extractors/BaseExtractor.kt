@@ -37,6 +37,7 @@ abstract class BaseExtractor(
         val rootNode = tree.getRootNode()
 
         val groups = mutableListOf<MatchedGroup>()
+        val utf8Bytes = sourceCode.encodeToByteArray()
         val query = TSQuery(tsLanguage, queryStr)
         val cursor = TSQueryCursor()
         try {
@@ -49,7 +50,9 @@ abstract class BaseExtractor(
                 for (capture in match.getCaptures()) {
                     val node = capture.getNode()
                     val name = query.getCaptureNameForId(capture.getIndex())
-                    val text = sourceCode.substring(node.getStartByte(), node.getEndByte()).trim()
+                    val start = minOf(node.getStartByte(), utf8Bytes.size)
+                    val end = minOf(node.getEndByte(), utf8Bytes.size)
+                    val text = if (start <= end) utf8Bytes.decodeToString(start, end).trim() else ""
                     capturesMap[name] = node
                     textMap[name] = text
                 }
