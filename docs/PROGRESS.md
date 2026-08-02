@@ -19,6 +19,7 @@ This document tracks the milestones, architectural upgrades, and completed phase
 | **Phase 9** | Repository Root Resolver & Security Guardrails | `RepositoryRootResolver` + `RepositoryGuardrail` boundary enforcement | **Complete ✅** |
 | **Phase 10** | Standalone Windows Native Executable | Zero-dependency `kindex.exe` via Kotlin/Native `mingwX64` | **Complete ✅** |
 | **Phase 11** | Cross-Platform Interactive TUI (Native) | `InteractiveCommand` promoted to `commonMain`, default mode on all targets | **Complete ✅** |
+| **Phase 12** | Audit-Grade Module Architecture Graphs | Module-aware Mermaid/DOT/JSON emitted by `scan` and `export`, external deps persisted | **Complete ✅** |
 
 ---
 
@@ -97,6 +98,20 @@ This document tracks the milestones, architectural upgrades, and completed phase
 *   **Default Execution Mode:** When `kindex.exe` is launched without any subcommand, it automatically launches the Interactive Explorer TUI.
 *   **Version Flag Added:** Added `-v` / `--version` flag to CLI root command (`kindex --version` → `1.0.0`).
 *   **`MPFile.writeText()` Added:** Extended `MPFile` multiplatform file abstraction with `writeText(content: String)` using `FileSystem.SYSTEM.write()` for clean file writes on all targets.
+
+---
+
+### Phase 12: Audit-Grade Module Architecture Graphs (`kindex scan` / `kindex export`)
+*   **`ModuleGraphAnalyzer` (new, `kindex-core`):** Central module-aware renderer producing Mermaid (`renderMermaid`), Graphviz DOT (`renderDot`), and JSON (`renderJson`) from the raw index. Groups nodes into per-module subgraphs (`kindex-cli`, `kindex-core`, `kindex-parser`, `kindex-storage`), styles nodes by architectural layer, and aggregates cross-module edges with call counts.
+*   **Graphs Emitted by Scan:** `ScanCommand` and `InteractiveCommand.doScan` now write `.kindex/graph.{mmd,dot,json}` automatically at the end of every scan — architecture diagrams are a first-class scan output, not just a post-hoc export.
+*   **External Dependencies Persisted:** Unresolved imports are no longer dropped. `resolveImportsDetailed` in `SymbolResolver.kt` reports them and the scan pipeline stores them as `IMPORTS` edges, so `External Dependencies` nodes (clikt, mordant, okio, SQLDelight, kotlinx.cinterop, tree-sitter) render correctly in every graph.
+*   **Kotlin Extraction Fixes (`KotlinJavaExtractor.kt`):** Stripped the literal `package ` / `import ` keywords (and trailing comments) from symbol ids and package names — previously every id was polluted with the keyword, breaking all import resolution. Added `object_declaration` capture so Kotlin objects (e.g. `object ModuleGraphAnalyzer`) are indexed instead of leaking their imports as externals.
+*   **Resolver Matching Cascade:** `SymbolResolver` now matches exact id → `.*` wildcard → top-level-function id (`pkg#name`) → package+name → file-name fallback.
+*   **`actual` / `solo` Annotation:** Rendered files correctly flagged as `actual` source-set implementations and `solo` (unused/standalone) files.
+*   **JVM Tree-sitter Build Unblocked (`TreeSitterJvm.kt`):** Replaced the mismatched `actual typealias TSQuery` with an `actual class TSQuery` wrapper exposing `isValid()`, restoring `:kindex-cli:compileKotlinJvm`.
+*   **Path-Based Layer Classification (`ArchitectureFlowAnalyzer.kt`):** Component layers classified from normalized file paths (`/cli/`, `/storage/`, `/parser/`, `/core/`) instead of reliance on call degree.
+*   **Scratch Dir Exclusion (`walkFiles`):** Gitignored scratch directories (e.g. `tsbuild/`) excluded from scanning so vendor/tree-sitter source checkouts never pollute the knowledge graph.
+*   **Verification:** Fresh scan of this repository yields 41 files / 217 symbols / 851 relationships, with a clean module graph (4 modules, module links, genuine external deps) rendered identically by `scan` and `export`.
 
 ---
 

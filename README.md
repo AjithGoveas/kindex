@@ -27,6 +27,7 @@ It works by:
 2. Extracting declared symbols (classes, functions, interfaces, modules) and their call/import relationships
 3. Storing everything in a compact SQLite database (`.kindex/index.db`) at your repository root
 4. Letting you query, explore, and export the resulting knowledge graph from a fast terminal interface
+5. Emitting **audit-grade module architecture graphs** (Mermaid/DOT/JSON) automatically with every scan
 
 The **v1.0.0 release ships as a standalone Windows executable** (`kindex.exe`) — no JVM, no Gradle, no setup required.
 
@@ -110,6 +111,9 @@ Index the repository's source files into `.kindex/index.db`. Run this once after
 
 KIndex performs **incremental scanning** — only new or modified files are re-processed on subsequent runs.
 
+> [!NOTE]
+> Every scan also writes **audit-grade module architecture graphs** to `.kindex/graph.mmd`, `.kindex/graph.dot`, and `.kindex/graph.json` automatically — an up-to-date architectural diagram is always one scan away, no separate export step required.
+
 ---
 
 ### Query Symbols
@@ -151,10 +155,10 @@ Output shows entry points (mains, CLI commands) and component distribution acros
 
 ### Export Diagrams
 
-Export an architectural diagram directly to `.kindex/`:
+Export **module-aware architecture graphs** directly to `.kindex/`. Nodes are grouped into per-module subgraphs (e.g. `kindex-cli`, `kindex-core`, `kindex-parser`, `kindex-storage`), styled by architectural layer, annotated as `actual`/`solo` where applicable, and linked to **external dependency nodes** built from unresolved imports. Cross-module edges are aggregated with call counts.
 
 ```powershell
-# Default: Hierarchical Mermaid TD flow map → .kindex/graph.mmd
+# Default: module-aware Mermaid flow map → .kindex/graph.mmd
 .\.kindex\kindex.exe export
 
 # File-level wiring in Graphviz DOT
@@ -163,9 +167,15 @@ Export an architectural diagram directly to `.kindex/`:
 # Package-level wiring in JSON
 .\.kindex\kindex.exe export -g package -f json
 
+# Symbol-level wiring
+.\.kindex\kindex.exe export -g symbol -f mermaid
+
 # N-hop subgraph focused on a specific target
 .\.kindex\kindex.exe export --focus SymbolResolver -f mermaid
 ```
+
+> [!NOTE]
+> `kindex scan` writes these same three graph files (`.kindex/graph.{mmd,dot,json}`) automatically at the end of every scan — `export` re-renders the index at a chosen granularity/format, including package- and symbol-level views.
 
 ---
 
@@ -262,7 +272,7 @@ dist/
 
 ```
 kindex/
-├── kindex-core/         Core domain models, MPFile I/O, RepositoryRootResolver, RepositoryGuardrail
+├── kindex-core/         Core domain models, MPFile I/O, RepositoryRootResolver, RepositoryGuardrail, ArchitectureFlowAnalyzer + ModuleGraphAnalyzer (module-aware Mermaid/DOT/JSON renderers)
 ├── kindex-parser/       Tree-sitter AST extraction + S-expression query engine (10 languages)
 ├── kindex-storage/      SQLDelight SQLite persistence (JVM + Native drivers)
 └── kindex-cli/          Clikt CLI commands + Interactive TUI + kindex.exe entry point

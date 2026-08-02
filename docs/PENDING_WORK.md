@@ -16,6 +16,8 @@ This document outlines upcoming architectural enhancements, optimizations, and f
 | Interactive TUI Dashboard (promoted to `commonMain`, default native mode) | **Complete ✅** |
 | `-Xexpect-actual-classes` compiler flag (zero-warning build) | **Complete ✅** |
 | Version flag (`kindex --version` → `1.0.0`) | **Complete ✅** |
+| Tree-sitter Native C Interop (`kindex-parser`, full native extraction parity) | **Complete ✅** |
+| Audit-grade Module-Aware Architecture Graphs emitted by `kindex scan` & `export` | **Complete ✅** |
 
 ---
 
@@ -37,12 +39,6 @@ This document outlines upcoming architectural enhancements, optimizations, and f
 ┌──────────────────────────────────────────────────────────┐
 │ Option 3: Benchmark & Stress Testing Suite               │
 │ Profile memory footprint & parse throughput on huge repos│
-└────────────────────────────┬─────────────────────────────┘
-                             │
-                             ▼
-┌──────────────────────────────────────────────────────────┐
-│ Option 4: Tree-sitter Native C Interop (kindex-parser)   │
-│ Replace JVM-only stubs with Kotlin/Native C API wrappers │
 └────────────────────────────┴─────────────────────────────┘
 ```
 
@@ -72,18 +68,7 @@ Automate multi-platform cross-compilation and release asset publishing on GitHub
 
 ---
 
-### 🌲 Option 3: Tree-sitter Native C Interop (`kindex-parser`)
-
-Replace JVM-only Tree-sitter parsing stubs with real Kotlin/Native C API wrappers so the native `kindex.exe` performs the same deep AST extraction as the JVM build.
-
-* **Key Deliverables:**
-  - [ ] Configure Tree-sitter C header search paths (`api.h`) and static library links (`libtree-sitter.a`) in `treesitter.def`.
-  - [ ] Replace native placeholder stubs in `TreeSitterNative.kt` with actual `cinterop`-generated C API wrappers.
-  - [ ] Validate extraction output parity between JVM and Native builds.
-
----
-
-### 📈 Option 4: Benchmarking & Profiling on Monorepos
+### 🌲 Option 3: Benchmarking & Profiling on Monorepos
 
 Establish baseline performance characteristics of KIndex against large-scale projects (e.g. Kotlin compiler, Spring Framework, Kubernetes).
 

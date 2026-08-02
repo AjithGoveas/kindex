@@ -8,12 +8,17 @@ sealed class KeyEvent {
     object Down     : KeyEvent()
     object Left     : KeyEvent()
     object Right    : KeyEvent()
+    object Home     : KeyEvent()
+    object End      : KeyEvent()
+    object PageUp   : KeyEvent()
+    object PageDown : KeyEvent()
     object Enter    : KeyEvent()
     object Escape   : KeyEvent()
     object Backspace: KeyEvent()
     object Tab      : KeyEvent()
     data class Character(val c: Char) : KeyEvent()
     object Unknown  : KeyEvent()
+    object Eof      : KeyEvent()
 }
 
 /** Read a single keystroke from stdin without requiring Enter.

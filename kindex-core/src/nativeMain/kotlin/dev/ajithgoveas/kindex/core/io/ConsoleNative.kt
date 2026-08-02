@@ -34,6 +34,10 @@ actual fun readKey(): KeyEvent {
                 80 -> KeyEvent.Down     // ↓
                 75 -> KeyEvent.Left     // ←
                 77 -> KeyEvent.Right    // →
+                71 -> KeyEvent.Home     // Home
+                79 -> KeyEvent.End      // End
+                73 -> KeyEvent.PageUp   // Page Up
+                81 -> KeyEvent.PageDown // Page Down
                 else -> KeyEvent.Unknown
             }
         }

@@ -2,7 +2,7 @@ package dev.ajithgoveas.kindex.core.io
 
 actual fun readKey(): KeyEvent {
     val b = System.`in`.read()
-    if (b < 0) return KeyEvent.Unknown
+    if (b < 0) return KeyEvent.Eof
     return when (b) {
         13, 10       -> KeyEvent.Enter
         27           -> {
@@ -10,11 +10,16 @@ actual fun readKey(): KeyEvent {
             if (System.`in`.available() > 0) {
                 val b2 = System.`in`.read()
                 if (b2 == '['.code && System.`in`.available() > 0) {
-                    when (System.`in`.read()) {
+                    when (val b3 = System.`in`.read()) {
                         'A'.code -> KeyEvent.Up
                         'B'.code -> KeyEvent.Down
                         'C'.code -> KeyEvent.Right
                         'D'.code -> KeyEvent.Left
+                        'H'.code, '1'.code, '7'.code -> { drainToTilde(); KeyEvent.Home }
+                        'F'.code, '4'.code, '8'.code -> { drainToTilde(); KeyEvent.End }
+                        '5'.code -> { drainToTilde(); KeyEvent.PageUp }
+                        '6'.code -> { drainToTilde(); KeyEvent.PageDown }
+                        '3'.code -> { drainToTilde(); KeyEvent.Escape }  // Delete key
                         else     -> KeyEvent.Escape
                     }
                 } else KeyEvent.Escape
@@ -22,9 +27,18 @@ actual fun readKey(): KeyEvent {
         }
         127, 8       -> KeyEvent.Backspace
         9            -> KeyEvent.Tab
-        3, 113       -> KeyEvent.Escape   // Ctrl-C or 'q'
+        3            -> KeyEvent.Escape   // Ctrl-C
         else         -> if (b in 32..126) KeyEvent.Character(b.toChar()) else KeyEvent.Unknown
     }
+}
+
+/** Consume the trailing '~' (or any) byte of an ESC [ n~ sequence if present. */
+private fun drainToTilde() {
+    try {
+        if (System.`in`.available() > 0 && System.`in`.read() == '~'.code) {
+            if (System.`in`.available() > 0) System.`in`.read()  // flush modifiers if any
+        }
+    } catch (_: Exception) { }
 }
 
 actual fun enableRawMode() {

@@ -9,6 +9,10 @@ kotlin {
         }
     }
 
+    tasks.withType<JavaExec>().configureEach {
+        standardInput = System.`in`
+    }
+
     val buildNative = project.hasProperty("native")
     val hostOs = System.getProperty("os.name")
 

@@ -70,7 +70,7 @@ flowchart TD
     end
 
     subgraph Scanner Layer
-        Scanner[Incremental File Scanner] -->|Filters builds / .gradle / .kindex| FilteredFiles[Source Files]
+        Scanner[Incremental File Scanner] -->|Filters builds / .gradle / .kindex / tsbuild| FilteredFiles[Source Files]
     end
 
     subgraph Parser Core [kindex-parser]
@@ -80,15 +80,23 @@ flowchart TD
 
     subgraph Linker Layer
         OverlapResolver -->|Definitions & REF: targets| Linker[Post-Scan Reference Linker]
+        Linker -->|Resolved CALLS edges| DB
+        Linker -->|Unresolved IMPORTS edges| DB
     end
 
     subgraph Storage Layer [kindex-storage]
-        Linker -->|Resolved CALLS & IMPORTS Edges| DB[(SQLDelight SQLite .kindex/index.db)]
+        DB[(SQLDelight SQLite .kindex/index.db)]
+    end
+
+    subgraph Analysis Layer [kindex-core]
+        DB -->|All symbols & edges| ModuleGraph[ModuleGraphAnalyzer]
+        DB -->|Layers & focus subgraphs| Flow[ArchitectureFlowAnalyzer]
     end
 
     subgraph UI Layer [kindex-cli]
         DB <-->|Queries| CLI[Clikt Console CLI]
         DB <-->|Interactive Menu| TUI[Native Interactive TUI]
+        ModuleGraph -->|Mermaid / DOT / JSON| Graphs[(.kindex/graph.mmd · dot · json)]
     end
 
     FilteredFiles --> Parser
@@ -115,6 +123,14 @@ flowchart TD
     *   Same-package declarations (sibling files).
     *   Local file declarations.
     *   Wildcard imports (e.g. `import package.*`).
+*   **External dependencies preserved:** imports that fail all resolution steps are no longer dropped — they are stored as `IMPORTS` edges referencing the external FQN, so `External Dependencies` nodes appear in every exported graph.
+*   **Resolution cascade:** exact id → `.*` wildcard (package prefix) → top-level-function id (`pkg#name`) → package+name → file-name fallback.
+*   Kotlin package/import captures are cleaned of the `package ` / `import ` keywords and trailing comments so ids resolve deterministically.
+
+### Graph Analysis & Export
+*   **`ModuleGraphAnalyzer`:** Central module-aware renderer generating Mermaid (`renderMermaid`), Graphviz DOT (`renderDot`), and JSON (`renderJson`). Output is grouped into per-module subgraphs (`kindex-cli`, `kindex-core`, `kindex-parser`, `kindex-storage`), styled by architectural layer, annotated for `actual` source-set implementations and `solo` (unused) files, with cross-module edges aggregated and labeled with call counts.
+*   **Emitted by scan:** `.kindex/graph.{mmd,dot,json}` are written automatically at the end of every `kindex scan` (and the interactive scan), making the architecture diagram a first-class scan output.
+*   **`ArchitectureFlowAnalyzer`:** Classifies layers path-based (`/cli/`, `/storage/`, `/parser/`, `/core/`), supports `-g flow|file|package|symbol` granularity, `-f mermaid|dot|json` formats, and `--focus` N-hop subgraph traversal.
 
 ### Security Guardrails
 *   **`RepositoryRootResolver`:** Walks parent directories to locate the repository root (`.git` or `settings.gradle.kts`). Ensures `.kindex/` is always created at the top-level root.
