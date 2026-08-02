@@ -32,7 +32,8 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
     override fun run() {
         val t = Terminal()
         val directory = dirOpt ?: dirArg ?: "."
-        val dbFile = MPFile("$directory/.kindex/index.db")
+        val rootDir = dev.ajithgoveas.kindex.core.io.RepositoryRootResolver.findRepositoryRoot(MPFile(directory))
+        val dbFile = MPFile("${rootDir.path}/.kindex/index.db")
         if (!dbFile.exists) {
             t.println(red("No index found. Run 'kindex scan $directory' first."))
             return
@@ -72,9 +73,9 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
 
         val targetFormat = format.lowercase()
         val defaultFile = when (targetFormat) {
-            "dot", "graphviz" -> "$directory/.kindex/graph.dot"
-            "json" -> "$directory/.kindex/graph.json"
-            else -> "$directory/.kindex/graph.mmd"
+            "dot", "graphviz" -> "${rootDir.path}/.kindex/graph.dot"
+            "json" -> "${rootDir.path}/.kindex/graph.json"
+            else -> "${rootDir.path}/.kindex/graph.mmd"
         }
         val targetOutputFile = outputOpt ?: defaultFile
 

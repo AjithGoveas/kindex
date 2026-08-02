@@ -37,7 +37,8 @@ class InteractiveCommand : CliktCommand(
         AnsiConsole.systemInstall()
 
         val t = Terminal()
-        val dbDir = File(directory, ".kindex")
+        val rootDir = dev.ajithgoveas.kindex.core.io.RepositoryRootResolver.findRepositoryRoot(dev.ajithgoveas.kindex.core.io.MPFile(directory.absolutePath))
+        val dbDir = File(rootDir.path, ".kindex")
         val dbFile = File(dbDir, "index.db")
 
         t.println()

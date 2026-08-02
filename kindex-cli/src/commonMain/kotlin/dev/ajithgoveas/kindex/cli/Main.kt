@@ -71,7 +71,8 @@ class ScanCommand : CliktCommand(name = "scan", help = "Scan a repository direct
 
         if (!quiet) t.println("Found ${walkedFiles.size} candidate source files. Checking for modifications...")
 
-        val dbFile = MPFile("$directory/.kindex/index.db")
+        val rootDir = dev.ajithgoveas.kindex.core.io.RepositoryRootResolver.findRepositoryRoot(dirFile)
+        val dbFile = MPFile("${rootDir.path}/.kindex/index.db")
         val storage = IndexStorage(dbFile)
 
         // Load existing index file metadata
@@ -202,7 +203,8 @@ class QueryCommand : CliktCommand(name = "query", help = "Search indexed symbols
     override fun run() {
         val t = Terminal()
         val directory = dirOpt ?: dirArg ?: "."
-        val dbFile = MPFile("$directory/.kindex/index.db")
+        val rootDir = dev.ajithgoveas.kindex.core.io.RepositoryRootResolver.findRepositoryRoot(MPFile(directory))
+        val dbFile = MPFile("${rootDir.path}/.kindex/index.db")
         if (!dbFile.exists) {
             t.println(red("No index found. Run 'kindex scan $directory' first."))
             return
