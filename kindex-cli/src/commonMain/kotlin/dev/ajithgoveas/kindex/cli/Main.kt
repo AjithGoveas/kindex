@@ -52,9 +52,13 @@ class ScanCommand : CliktCommand(name = "scan", help = "Scan a repository direct
 
     override fun run() {
         val t = Terminal()
-        val dirFile = MPFile(directory)
         val currentWorkspaceDir = MPFile(".")
         val rootDir = dev.ajithgoveas.kindex.core.io.RepositoryRootResolver.findRepositoryRoot(currentWorkspaceDir)
+        val dirFile = if (directory == "." || MPFile(directory).absolutePath == currentWorkspaceDir.absolutePath) {
+            rootDir
+        } else {
+            MPFile(directory)
+        }
         try {
             dev.ajithgoveas.kindex.core.io.RepositoryGuardrail.assertWithinRepository(dirFile, rootDir)
         } catch (e: dev.ajithgoveas.kindex.core.io.RepositoryBoundaryException) {
@@ -210,9 +214,13 @@ class QueryCommand : CliktCommand(name = "query", help = "Search indexed symbols
     override fun run() {
         val t = Terminal()
         val directory = dirOpt ?: dirArg ?: "."
-        val targetDir = MPFile(directory)
         val currentWorkspaceDir = MPFile(".")
         val rootDir = dev.ajithgoveas.kindex.core.io.RepositoryRootResolver.findRepositoryRoot(currentWorkspaceDir)
+        val targetDir = if (directory == "." || MPFile(directory).absolutePath == currentWorkspaceDir.absolutePath) {
+            rootDir
+        } else {
+            MPFile(directory)
+        }
         try {
             dev.ajithgoveas.kindex.core.io.RepositoryGuardrail.assertWithinRepository(targetDir, rootDir)
         } catch (e: dev.ajithgoveas.kindex.core.io.RepositoryBoundaryException) {

@@ -32,9 +32,13 @@ class ExportCommand : CliktCommand(name = "export", help = "Export knowledge gra
     override fun run() {
         val t = Terminal()
         val directory = dirOpt ?: dirArg ?: "."
-        val targetDir = MPFile(directory)
         val currentWorkspaceDir = MPFile(".")
         val rootDir = dev.ajithgoveas.kindex.core.io.RepositoryRootResolver.findRepositoryRoot(currentWorkspaceDir)
+        val targetDir = if (directory == "." || MPFile(directory).absolutePath == currentWorkspaceDir.absolutePath) {
+            rootDir
+        } else {
+            MPFile(directory)
+        }
         try {
             dev.ajithgoveas.kindex.core.io.RepositoryGuardrail.assertWithinRepository(targetDir, rootDir)
             outputOpt?.let { dev.ajithgoveas.kindex.core.io.RepositoryGuardrail.assertWithinRepository(MPFile(it), rootDir) }
