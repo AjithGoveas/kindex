@@ -11,7 +11,15 @@ kotlin {
 
     if (buildNative) {
         if (hostOs.startsWith("Windows")) {
-            mingwX64()
+            mingwX64 {
+                compilations.getByName("main") {
+                    cinterops {
+                        val conio by creating {
+                            defFile(project.file("src/nativeInterop/cinterop/conio.def"))
+                        }
+                    }
+                }
+            }
         }
         if (hostOs.startsWith("Linux")) {
             linuxX64()

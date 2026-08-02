@@ -1,4 +1,4 @@
-# Project Brief: KIndex – Code Knowledge Indexer
+# Project Brief: KIndex – Code Knowledge Indexer v1.0.0
 
 <p align="center">
   <strong>Understand any codebase in minutes, not days.</strong>
@@ -8,13 +8,17 @@
 
 > [!NOTE]
 > **KIndex** is an offline-first, local-first developer tool that translates abstract syntax trees (ASTs) into queryable relational graph data. It operates entirely on your local machine, keeping code safe and private while providing instant architectural insights.
+> 
+> As of **v1.0.0**, KIndex ships as a **standalone Windows native executable** (`kindex.exe`) with zero JVM or runtime dependencies.
 
 ---
 
 ## 1. Project Overview
 
 *   **Project Name:** KIndex (Code Knowledge Indexer)
+*   **Current Version:** `v1.0.0`
 *   **Vision:** Provide developers with instant, offline answers to structural code queries—such as tracing function callers, mapping class hierarchy structures, and finding unreachable code—without manual directory traversal.
+*   **Distribution:** Standalone Windows executable (`kindex.exe`) via custom GitHub tag-based release uploads. macOS & Linux executables planned.
 
 ---
 
@@ -37,6 +41,8 @@ While IDEs facilitate single-file navigation, they lack a unified database-query
     *   Extensible language-agnostic parsing layer.
     *   Incremental codebase scanning using file hashes.
     *   Rich CLI and keyboard-driven terminal dashboard.
+    *   **Strict local repository boundary enforcement** — the tool cannot read or scan files outside its host repository.
+    *   **Zero-dependency standalone executable** for Windows distribution.
 
 ---
 
@@ -58,6 +64,11 @@ KIndex indexes 8 major programming languages and formats out of the box:
 
 ```mermaid
 flowchart TD
+    subgraph Input Layer
+        Repo[(Target Codebase)] --> Guard[RepositoryGuardrail]
+        Guard --> |Boundary-checked path| Scanner
+    end
+
     subgraph Scanner Layer
         Scanner[Incremental File Scanner] -->|Filters builds / .gradle / .kindex| FilteredFiles[Source Files]
     end
@@ -72,15 +83,16 @@ flowchart TD
     end
 
     subgraph Storage Layer [kindex-storage]
-        Linker -->|Resolved CALLS & IMPORTS Edges| DB[(SQLDelight SQLite Database)]
+        Linker -->|Resolved CALLS & IMPORTS Edges| DB[(SQLDelight SQLite .kindex/index.db)]
     end
 
     subgraph UI Layer [kindex-cli]
         DB <-->|Queries| CLI[Clikt Console CLI]
-        DB <-->|Arrow Keys| TUI[JLine Interactive TUI]
+        DB <-->|Interactive Menu| TUI[Native Interactive TUI]
     end
 
     FilteredFiles --> Parser
+    RootResolver[RepositoryRootResolver] --> Guard
 ```
 
 ---
@@ -88,8 +100,9 @@ flowchart TD
 ## 6. Technical Specifications
 
 ### Multiplatform Storage Backend
-*   **SQLDelight Engine:** Resolves persistence across targets. Maps files, symbols, and relationship tables cleanly with sqlite indexes to optimize graph queries.
+*   **SQLDelight Engine:** Resolves persistence across targets. Maps files, symbols, and relationship tables cleanly with SQLite indexes to optimize graph queries.
 *   **Performance Tuning:** Enforces WAL journal mode and normal synchronous pragmas to handle bulk codebase updates efficiently.
+*   **Native Driver:** Uses Touchlab's SQLiter `NativeSqliteDriver` with `ExistingDbSchema` delegation to open pre-existing databases without re-running `CREATE TABLE`.
 
 ### S-Expression Code Parser
 *   **Native tree-sitter queries:** Employs declarative query files (`.scm`) and syntax blocks mapping node identifiers positionally to maximize parsing throughput.
@@ -103,10 +116,18 @@ flowchart TD
     *   Local file declarations.
     *   Wildcard imports (e.g. `import package.*`).
 
+### Security Guardrails
+*   **`RepositoryRootResolver`:** Walks parent directories to locate the repository root (`.git` or `settings.gradle.kts`). Ensures `.kindex/` is always created at the top-level root.
+*   **`RepositoryGuardrail`:** Canonicalizes all target paths and rejects any operation attempting to access paths outside the repository boundary.
+
+### Native Compilation
+*   **Kotlin/Native `mingwX64`:** Compiles `kindex.exe` as a standalone Windows binary via LLVM/lld.
+*   **Compiler Flag:** `-Xexpect-actual-classes` applied globally across all KMP submodules to suppress Beta warnings on `expect`/`actual` class declarations.
+
 ---
 
 ## 7. Design Philosophy
 
 > **Parse once. Build knowledge once. Query instantly.**
 
-KIndex prioritizes deterministic code analysis over heuristics, generating code graphs directly from compiler syntax trees.
+KIndex prioritizes deterministic code analysis over heuristics, generating code graphs directly from compiler syntax trees. The tool is **strictly local** — it never sends code, paths, or metadata to any external service.

@@ -16,6 +16,9 @@ This document tracks the milestones, architectural upgrades, and completed phase
 | **Phase 6** | Git Hook Automation | Background re-scanning on post-commit and post-checkout | **Complete ✅** |
 | **Phase 7** | SQLite FTS5 Search Engine | Tokenized camelCase/snake_case fuzzy symbol search | **Complete ✅** |
 | **Phase 8** | Multi-Format Exporters | Graphviz DOT, JSON graph, and Mermaid exporters | **Complete ✅** |
+| **Phase 9** | Repository Root Resolver & Security Guardrails | `RepositoryRootResolver` + `RepositoryGuardrail` boundary enforcement | **Complete ✅** |
+| **Phase 10** | Standalone Windows Native Executable | Zero-dependency `kindex.exe` via Kotlin/Native `mingwX64` | **Complete ✅** |
+| **Phase 11** | Cross-Platform Interactive TUI (Native) | `InteractiveCommand` promoted to `commonMain`, default mode on all targets | **Complete ✅** |
 
 ---
 
@@ -67,13 +70,57 @@ This document tracks the milestones, architectural upgrades, and completed phase
 *   **Multi-Level Granularity:** Supported `-g flow`, `-g file`, `-g package`, `-g symbol` for customized architectural abstractions.
 *   **Focal Subgraph Traversal:** Implemented `--focus <target>` for N-hop connected subgraphs.
 *   **Centralized `.kindex/` Storage:** Saved export files directly in `.kindex/` by default (`.kindex/graph.mmd`, `.kindex/graph.dot`, `.kindex/graph.json`).
-*   **Top-Level Repository Root Resolver:** Built `RepositoryRootResolver` ensuring `.kindex/` is ALWAYS located at the top-level repository root directory regardless of execution depth.
-*   **Interactive TUI Exporter Sub-Menu:** Integrated graph export sub-menu into `kindex interactive` console. (`source`, `target`, `relation`).
+
+---
+
+### Phase 9: Repository Root Resolver & Local Security Guardrails
+*   **Top-Level Repository Root Resolver:** Built `RepositoryRootResolver` ensuring `.kindex/` is ALWAYS located at the top-level repository root directory regardless of execution depth. Detects repository root by walking up parent directories for `.git` or `settings.gradle.kts` markers.
+*   **Strict Local Repository Guardrail (`RepositoryGuardrail`):** Prevents scanning, querying, or exporting outside the canonical repository root. Canonicalizes paths via `FileSystem.SYSTEM.canonicalize()` to prevent symlink and relative path traversal attacks.
+*   **Security Enforcement Verified:** Running `kindex scan ../..` correctly rejects execution with `❌ Security Error: Target path is outside local repository boundaries`.
+
+---
+
+### Phase 10: Standalone Windows Native Executable (`kindex.exe`)
+*   **Zero-Dependency Windows Binary:** Compiled standalone `kindex.exe` via Kotlin/Native `mingwX64` target — no JVM, JRE, or Gradle required on the developer machine.
+*   **Gradle Build Task (`:buildWindowsExecutable`):** Single command `./gradlew -Pnative :buildWindowsExecutable` assembles:
+    *   `dist/kindex.exe` — Standalone Windows executable
+    *   `dist/sqlite3.dll` — Native SQLite driver
+    *   `dist/kindex.exe.sha256` — SHA-256 integrity checksum for release verification
+*   **SQLDelight Native Driver Fix (`ExistingDbSchema`):** Fixed `SQLiteException: table already exists` crash when opening pre-existing database files. Implemented `ExistingDbSchema` delegation that bypasses `CREATE TABLE` on existing files.
+*   **Native PRAGMA Fix:** Used `driver.executeQuery()` instead of `driver.execute()` for `PRAGMA journal_mode = WAL;` to comply with SQLiter's native query API restrictions.
+*   **Tag-Based Custom Release Packaging:** Shipped `dist/kindex.exe` + `dist/kindex.exe.sha256` as release assets for manual upload to GitHub Releases under tag `v1.0.0`.
+
+---
+
+### Phase 11: Cross-Platform Native Interactive TUI (Default Mode)
+*   **`InteractiveCommand` promoted to `commonMain`:** Rewrote the Interactive TUI from JVM-only (`jvmMain`) to pure Kotlin Multiplatform (`commonMain`) — eliminating JLine/Jansi JVM-specific dependencies. Now compiles and runs natively in `kindex.exe`.
+*   **Default Execution Mode:** When `kindex.exe` is launched without any subcommand, it automatically launches the Interactive Explorer TUI.
+*   **Version Flag Added:** Added `-v` / `--version` flag to CLI root command (`kindex --version` → `1.0.0`).
+*   **`MPFile.writeText()` Added:** Extended `MPFile` multiplatform file abstraction with `writeText(content: String)` using `FileSystem.SYSTEM.write()` for clean file writes on all targets.
 
 ---
 
 > [!IMPORTANT]
-> **Windows Compilation & Build Note:**
+> **`-Xexpect-actual-classes` Compiler Flag — Build Warning Suppression:**
+> Kotlin/Multiplatform marks `expect`/`actual` class declarations as a Beta feature and emits compiler warnings on every occurrence. This has been suppressed project-wide by adding the `-Xexpect-actual-classes` opt-in flag to the root `build.gradle.kts` via a `subprojects {}` block:
+>
+> ```kotlin
+> subprojects {
+>     plugins.withId("org.jetbrains.kotlin.multiplatform") {
+>         extensions.configure<KotlinMultiplatformExtension> {
+>             compilerOptions {
+>                 freeCompilerArgs.add("-Xexpect-actual-classes")
+>             }
+>         }
+>     }
+> }
+> ```
+>
+> This applies globally to all 4 KMP submodules (`kindex-core`, `kindex-parser`, `kindex-storage`, `kindex-cli`) with a single declaration. The build now compiles with **zero warnings**.
+
+> [!NOTE]
+> **Windows Native Compilation Notes:**
 > To resolve SQLite linking issues (`sqlite3_close` undefined symbols) and SQLDelight driver verification errors when compiling on Windows:
 > - Native platform targets (`mingwX64`, `linuxX64`, `macos*`) are gated behind the `-Pnative` project property. By default, only the JVM target builds.
 > - SQLDelight's verification tasks (`verify<SourceSet><Database>Migration`) are disabled programmatically to bypass Java/Windows path extraction and loading issues with the SQLite JDBC native wrapper.
+> - The native linker requires `sqlite3.dll` to be present alongside `kindex.exe` at runtime. Both are bundled automatically by the `:buildWindowsExecutable` Gradle task.

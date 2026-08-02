@@ -1,233 +1,279 @@
-# 🚀 KIndex
+# KIndex
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Kotlin-2.x-purple?style=for-the-badge&logo=kotlin" alt="Kotlin Version" />
-  <img src="https://img.shields.io/badge/Build-Gradle-blue?style=for-the-badge&logo=gradle" alt="Gradle Build" />
-  <img src="https://img.shields.io/badge/Database-SQLite-green?style=for-the-badge&logo=sqlite" alt="SQLite Database" />
-  <img src="https://img.shields.io/badge/Parser-Tree--Sitter-red?style=for-the-badge" alt="Tree-sitter Parser" />
-  <img src="https://img.shields.io/badge/Platform-Multiplatform-lightgrey?style=for-the-badge" alt="Kotlin Multiplatform" />
+  <img src="https://img.shields.io/badge/version-1.0.0-brightgreen?style=flat-square" alt="v1.0.0" />
+  <img src="https://img.shields.io/badge/kotlin-multiplatform-7F52FF?style=flat-square&logo=kotlin&logoColor=white" alt="Kotlin Multiplatform" />
+  <img src="https://img.shields.io/badge/platform-windows-0078D4?style=flat-square&logo=windows&logoColor=white" alt="Windows" />
+  <img src="https://img.shields.io/badge/database-sqlite-003B57?style=flat-square&logo=sqlite&logoColor=white" alt="SQLite" />
+  <img src="https://img.shields.io/badge/license-proprietary-red?style=flat-square" alt="Proprietary" />
 </p>
 
 <p align="center">
-  <strong>Understand any codebase in minutes, not days.</strong>
+  <b>Local-first codebase intelligence. No cloud. No runtime. Just answers.</b>
 </p>
 
 <p align="center">
-  KIndex is an idiomatic, local-first <strong>Kotlin Multiplatform (KMP)</strong> developer tool that scans software projects, extracts syntactic symbols using native concrete syntax trees, and builds a queryable knowledge graph stored directly in a local SQLite database.
+  KIndex scans your repository, extracts syntactic symbols via Tree-sitter concrete syntax trees, and builds a queryable knowledge graph inside a local SQLite database — entirely offline, entirely on your machine.
 </p>
 
 ---
 
-## 📖 Table of Contents
+## What is KIndex?
 
-- [💡 Project Vision](#-project-vision)
-- [🌟 Key Features](#-key-features)
-- [🏗️ System Architecture](#-system-architecture)
-- [📦 Module Breakdown](#-module-breakdown)
-- [🚀 Quick Start & Usage](#-quick-start--usage)
-- [⚙️ Tech Stack](#-tech-stack)
-- [🗺️ Roadmap & Milestones](#-roadmap--milestones)
-- [🤝 Contributing](#-contributing)
-- [📄 License](#-license)
+KIndex is a **local developer intelligence tool** designed to answer structural questions about a codebase instantly — without sending a single line of code to the cloud.
 
----
+It works by:
+1. Walking your source tree and parsing each file into an Abstract Syntax Tree (AST) via [Tree-sitter](https://tree-sitter.github.io/tree-sitter/)
+2. Extracting declared symbols (classes, functions, interfaces, modules) and their call/import relationships
+3. Storing everything in a compact SQLite database (`.kindex/index.db`) at your repository root
+4. Letting you query, explore, and export the resulting knowledge graph from a fast terminal interface
 
-## 💡 Project Vision
-
-> [!NOTE]
-> Navigating modern, complex repositories usually involves tedious manual clicks or heavy AI models that require internet connectivity and leak code privacy. 
-> 
-> **KIndex** solves this by performing fast, offline, and deterministic static analysis directly on your local machine. By translating syntax trees into clean relational entity-relationship models, it provides instant answers to structural code queries.
+The **v1.0.0 release ships as a standalone Windows executable** (`kindex.exe`) — no JVM, no Gradle, no setup required.
 
 ---
 
-## 🌟 Key Features
+## Supported Languages
 
-*   **🔍 AST-Based Code Analysis** — Leverages Tree-sitter for lightning-fast, high-precision concrete syntax tree extraction.
-*   **🌐 S-Expression Query Engine** — Combines declarative native Tree-sitter queries (`TSQuery`) with parent match grouping for high-fidelity extraction.
-*   **📐 Hierarchical Nesting Resolution** — Automatically resolves lexical member scopes (e.g. member functions inside classes) using byte-range bounding containment logic.
-*   **🚀 Multi-Language Support** — Fully indexes **Java, Kotlin, Rust, C, C++, C#, JavaScript (JSX), TypeScript (TSX), Go, and CSS**.
-*   **🔗 Reference & Call site Linking** — Extracts unresolved symbol method calls/class instantiations and resolves them post-scan to build a rich dependency graph.
-*   **💾 Local & SQLite-Powered** — Stores results in a single SQLite database file managed by **SQLDelight** for type-safe, multiplatform database execution.
-*   **💻 Interactive CLI & TUI Console** — Query symbols, check metrics, search for dead code, and navigate scopes straight from a rich terminal interface.
+| Language | Symbols Extracted |
+| :--- | :--- |
+| **Kotlin & Java** | Packages, classes, interfaces, methods, constructors, call sites |
+| **Rust** | Modules, structs, traits, impl blocks, function calls |
+| **C & C++** | Namespaces, structs, function definitions, `#include` links |
+| **C#** | Namespaces, classes, interfaces, methods, `using` imports |
+| **JavaScript & TypeScript** | Modules, classes, interfaces, functions, imports |
+| **Go** | Packages, structs, interfaces, functions, methods |
+| **CSS** | Class selectors, ID selectors |
 
 ---
 
-## 🏗️ System Architecture
+## Installation
 
-```mermaid
-flowchart TD
-    subgraph Input Layer
-        Repo[(Target Codebase)]
-    end
+### Windows (Recommended)
 
-    subgraph Core Analysis Pipeline
-        Scanner[Scanner Module]
-        Parser[Tree-Sitter Parser]
-        QueryEngine[S-Expression TSQuery Engine]
-        Extractor[Hierarchical Resolver]
-        Linker[Post-Scan Reference Linker]
-    end
+KIndex v1.0.0 ships as a **zero-dependency native Windows executable**. No JVM or runtime installation needed.
 
-    subgraph Storage Layer
-        DB[(SQLite Local Storage)]
-    end
+> [!IMPORTANT]
+> `kindex.exe` **must** be placed inside the `.kindex/` folder at the **root of the repository** you want to analyze. KIndex is strictly scoped to its host repository — it cannot read or write files outside its root boundary.
 
-    subgraph User Interface
-        CLI[Clikt CLI Engine]
-        TUI[JLine Interactive TUI]
-    end
+**Steps:**
 
-    Repo -->|Scan directories| Scanner
-    Scanner -->|Source files| Parser
-    Parser -->|AST Nodes| QueryEngine
-    QueryEngine -->|Matched Groups| Extractor
-    Extractor -->|Symbols & Call Refs| Linker
-    Linker -->|Resolved Dependency Edges| DB
-    DB <-->|SQL Queries| CLI
-    DB <-->|Arrow-Key Navigation| TUI
-    
-    classDef main fill:#5C6BC0,stroke:#3F51B5,stroke-width:2px,color:#fff;
-    classDef storage fill:#66BB6A,stroke:#4CAF50,stroke-width:2px,color:#fff;
-    classDef input fill:#FFA726,stroke:#F57C00,stroke-width:2px,color:#fff;
-    
-    class Scanner,Parser,QueryEngine,Extractor,Linker main;
-    class DB storage;
-    class Repo input;
+1. Create a `.kindex/` folder at the root of your project if one doesn't exist yet.
+2. Download `kindex.exe` and `sqlite3.dll` from the [Releases](https://github.com/AjithGoveas/kindex/releases) page.
+3. Place **both files** inside `.kindex/`.
+4. Run directly from your terminal:
+
+```powershell
+.\.kindex\kindex.exe
+```
+
+> [!TIP]
+> Add the following entries to your `.gitignore` to prevent KIndex runtime files from being committed to version control:
+> ```gitignore
+> # KIndex — local repository intelligence tool
+> .kindex/
+> ```
+> It is **strongly recommended** to ignore the entire `.kindex/` folder in VCS. The index database, exported diagrams, and executable are all local runtime artifacts and should not be tracked.
+
+---
+
+## Usage
+
+### Interactive Explorer (Default Mode)
+
+Launching `kindex.exe` without any arguments opens the **Interactive Knowledge Explorer** — a menu-driven terminal interface for searching, navigating, and analyzing your codebase.
+
+```powershell
+.\.kindex\kindex.exe
+```
+
+The explorer presents the following actions:
+
+```
+  1  Search    — Search symbols in codebase
+  2  Deps      — Query dependency references
+  3  Stats     — View structural stats
+  4  Flow      — Architectural layer analysis
+  5  Export    — Export Mermaid graph diagram
+  6  Dead      — Identify dead / unreferenced code
+  7  Quit      — Exit session
 ```
 
 ---
 
-## 📦 Module Breakdown
+### Scan & Index
 
-The project is structured as an idiomatic Gradle Kotlin Multiplatform (KMP) project:
+Index the repository's source files into `.kindex/index.db`. Run this once after setup, or whenever you make significant changes.
 
-| Module | Purpose | Description |
-| :--- | :--- | :--- |
-| [**`kindex-core`**](file:///c:/Users/ajith/Videos/Projects/KIndex/kindex-core) | Core Engines | Defines shared domain models, graph structures, and file interfaces. |
-| [**`kindex-parser`**](file:///c:/Users/ajith/Videos/Projects/KIndex/kindex-parser) | Parsing Layer | Invokes S-expression query matches for all 8 grammar sets via JNI on JVM. |
-| [**`kindex-storage`**](file:///c:/Users/ajith/Videos/Projects/KIndex/kindex-storage) | Database & Schema | Handles multiplatform SQLite persistence, migrations, and indexing via SQLDelight. |
-| [**`kindex-cli`**](file:///c:/Users/ajith/Videos/Projects/KIndex/kindex-cli) | Terminal UX | Clikt commands and JLine arrow-key driven interactive dashboard. |
+```powershell
+.\.kindex\kindex.exe scan .
+```
+
+KIndex performs **incremental scanning** — only new or modified files are re-processed on subsequent runs.
 
 ---
 
-## 🚀 Quick Start & Usage
+### Query Symbols
 
-### Prerequisites
+Search for classes, functions, or any declared symbol using full-text, `camelCase`-aware tokenized search:
 
-- **Java Development Kit (JDK):** Version 17 or higher.
-- **Git** (for scanning repositories).
+```powershell
+# Find all symbols matching "Resolver" (also matches SymbolResolver, ImportResolver, etc.)
+.\.kindex\kindex.exe query "Resolver"
+```
 
-### Build from Source
+---
 
-Clone the repository and compile the binaries:
+### Dependency Analysis
 
-```bash
-# Clone the repository
+Inspect incoming and outgoing call/import references for any symbol:
+
+```powershell
+.\.kindex\kindex.exe deps SymbolResolver
+```
+
+---
+
+### Architectural Flow Analysis
+
+Classify your codebase into a 4-tier architectural model and display entry points:
+
+```powershell
+.\.kindex\kindex.exe flow
+```
+
+Output shows entry points (mains, CLI commands) and component distribution across:
+- 🚀 **Entry Points & Drivers**
+- ⚙️ **Service & Parser Engine**
+- 💾 **Storage & Infrastructure**
+- 🛠️ **Solo & Standalone Utilities**
+
+---
+
+### Export Diagrams
+
+Export an architectural diagram directly to `.kindex/`:
+
+```powershell
+# Default: Hierarchical Mermaid TD flow map → .kindex/graph.mmd
+.\.kindex\kindex.exe export
+
+# File-level wiring in Graphviz DOT
+.\.kindex\kindex.exe export -g file -f dot
+
+# Package-level wiring in JSON
+.\.kindex\kindex.exe export -g package -f json
+
+# N-hop subgraph focused on a specific target
+.\.kindex\kindex.exe export --focus SymbolResolver -f mermaid
+```
+
+---
+
+### Dead Code Detection
+
+List classes and interfaces with zero incoming references:
+
+```powershell
+.\.kindex\kindex.exe dead
+```
+
+---
+
+### Git Hook Automation
+
+Automatically re-index after every `git commit`, `git checkout`, `git merge`, and `git rebase`:
+
+```powershell
+# Install non-blocking background hooks
+.\.kindex\kindex.exe hook install
+
+# Check hook status
+.\.kindex\kindex.exe hook status
+
+# Remove hooks
+.\.kindex\kindex.exe hook uninstall
+```
+
+---
+
+### Structural Statistics
+
+Print a summary of files, symbols, packages, classes, and dependency edges:
+
+```powershell
+.\.kindex\kindex.exe stats
+```
+
+---
+
+### Version
+
+```powershell
+.\.kindex\kindex.exe --version
+# 1.0.0
+```
+
+---
+
+## Security Model
+
+KIndex enforces a **strict local repository boundary**. Every path passed to any command is validated against the canonical repository root (identified by `.git` or `settings.gradle.kts`). Any operation targeting a path outside this root is immediately rejected:
+
+```
+❌ Security Error: Target path 'C:\Users\...\Videos' is outside local repository
+   boundaries ('C:\Users\...\Videos\Projects\MyRepo').
+   KIndex is strictly locked to its local repository scope.
+```
+
+This guarantees the tool cannot be used — accidentally or deliberately — to access, read, or index files outside the repository it was placed in.
+
+---
+
+## Build from Source
+
+Requires the [Kotlin/Native toolchain](https://kotlinlang.org/docs/native-overview.html) and Gradle.
+
+```powershell
 git clone https://github.com/AjithGoveas/kindex.git
 cd KIndex
 
-# Compile and package modules
-./gradlew build :kindex-cli:installDist
+# Build standalone Windows executable
+.\gradlew.bat -Pnative :buildWindowsExecutable
 ```
 
-### CLI Command Reference
+Output:
 
-Once built, you can run KIndex CLI using the generated distribution scripts:
-
-#### 1. Scan and Index a Repository
-Index a target repository and generate the SQLite database.
-```bash
-./kindex-cli/build/install/kindex-cli/bin/kindex-cli scan /path/to/target/project
+```
+dist/
+├── kindex.exe         ← Standalone Windows binary
+├── sqlite3.dll        ← Required SQLite native driver
+└── kindex.exe.sha256  ← SHA-256 integrity checksum
 ```
 
-#### 2. Query Symbols (SQLite FTS5 Tokenized Search)
-Find where classes or functions are declared using SQLite FTS5 full-text search with camelCase and sub-word tokenization (e.g. searching `Resolver` matches `SymbolResolver`):
-```bash
-./kindex-cli/build/install/kindex-cli/bin/kindex-cli query "Resolver" /path/to/target/project
-```
-
-#### 3. Interactive TUI Dashboard
-Explore codebase structure, search symbols, and list dead code with arrow keys:
-```bash
-./kindex-cli/build/install/kindex-cli/bin/kindex-cli interactive /path/to/target/project
-```
-
-#### 4. Git Hook Automation
-Install, inspect, or remove non-blocking background re-scan hooks for Git lifecycle events (`post-commit`, `post-checkout`, `post-merge`, `post-rewrite`):
-```bash
-# Check status of Git hooks
-./kindex-cli/build/install/kindex-cli/bin/kindex-cli hook status /path/to/target/project
-
-# Install non-blocking background hooks
-./kindex-cli/build/install/kindex-cli/bin/kindex-cli hook install /path/to/target/project
-
-# Uninstall hooks
-./kindex-cli/build/install/kindex-cli/bin/kindex-cli hook uninstall /path/to/target/project
-```
-
-#### 5. Architectural Flow & Multi-Format Exporters (`kindex flow` / `kindex export`)
-Inspect entry points, architectural layers, and export GitDiagram-style hierarchical flow maps or granular wiring:
-```bash
-# Terminal Architectural Flow Analysis
-./kindex-cli/build/install/kindex-cli/bin/kindex-cli flow /path/to/target/project
-
-# Default Overall Hierarchical Flow Export (GitDiagram style Mermaid TD)
-./kindex-cli/build/install/kindex-cli/bin/kindex-cli export /path/to/target/project
-
-# Export File-to-File Wiring in Graphviz DOT (.dot)
-./kindex-cli/build/install/kindex-cli/bin/kindex-cli export /path/to/target/project -g file -f dot -o file_wiring.dot
-
-# Export Package/Module Wiring in JSON (.json)
-./kindex-cli/build/install/kindex-cli/bin/kindex-cli export /path/to/target/project -g package -f json -o pkg_wiring.json
-
-# Export N-Hop Connected Subgraph around a Focal Target
-./kindex-cli/build/install/kindex-cli/bin/kindex-cli export /path/to/target/project --focus SymbolResolver -f mermaid -o focus.mmd
-```
+> [!NOTE]
+> For JVM development (no native toolchain required):
+> ```bash
+> ./gradlew build :kindex-cli:installDist
+> ```
 
 ---
 
-## ⚙️ Tech Stack
+## Architecture
 
-- **Core Language:** [Kotlin 2.x (Multiplatform)](https://kotlinlang.org/)
-- **Build System:** Gradle (Kotlin DSL)
-- **CLI Framework:** [Clikt](https://ajalt.github.io/clikt/) (Multiplatform CLI library)
-- **Terminal Styling:** [Mordant](https://ajalt.github.io/mordant/) & [JLine](https://github.com/jline/jline3) (TUI rendering)
-- **AST Parsing Engine:** [Tree-sitter](https://tree-sitter.github.io/tree-sitter/)
-- **Database Backend:** SQLite via [SQLDelight](https://cashapp.github.io/sqldelight/)
+```
+kindex/
+├── kindex-core/         Core domain models, MPFile I/O, RepositoryRootResolver, RepositoryGuardrail
+├── kindex-parser/       Tree-sitter AST extraction + S-expression query engine (10 languages)
+├── kindex-storage/      SQLDelight SQLite persistence (JVM + Native drivers)
+└── kindex-cli/          Clikt CLI commands + Interactive TUI + kindex.exe entry point
+```
 
----
-
-## 🗺️ Roadmap & Milestones
-
-### **Phase 1: Foundation (Completed)**
-- [x] Multi-module Gradle Kotlin Multiplatform structure setup
-- [x] Clikt-based CLI entry point
-- [x] SQLDelight local database schema and multiplatform driver persistence
-
-### **Phase 2: Parsing & Indexing (Completed)**
-- [x] Tree-sitter bindings integration
-- [x] Declarative S-expression (`TSQuery`) parser engine
-- [x] Support for 8 major languages (Kotlin/Java, Rust, C/C++, C#, JS/TS, Go, CSS)
-- [x] Lexical scope-containment and inheritance resolution
-- [x] Post-Scan Reference Linker resolving call sites and instantiations
-
-### **Phase 3: Interactive UX (Completed)**
-- [x] Command-line querying, dead code tracing, and statistics commands
-- [x] Rich Arrow-key driven TUI dashboard for interactive codebase traversal
+All four modules target **both JVM and Kotlin/Native** (`mingwX64`, `linuxX64`, `macosArm64`, `macosX64`). The `-Xexpect-actual-classes` compiler flag is applied globally to suppress Kotlin/Multiplatform Beta warnings on `expect`/`actual` class declarations.
 
 ---
 
-## 🤝 Contributing
+## License
 
-Contributions are highly welcome! Please follow these guidelines:
+**Proprietary. All rights reserved.**
 
-1. **Fork** the repository and create your feature branch: `git checkout -b feature/amazing-feature`.
-2. Ensure your changes compile perfectly and pass all unit tests: `./gradlew test`.
-3. Open a **Pull Request** detailing the rationale behind your change.
-
----
-
-## 📄 License
-
-This project is currently under active development. License terms and documentation will be finalized prior to the first stable release.
+KIndex and all associated source code, binaries, and documentation are proprietary and confidential. Unauthorized copying, distribution, modification, or use — in whole or in part — is strictly prohibited without explicit written permission from the author.

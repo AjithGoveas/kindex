@@ -1,0 +1,13 @@
+headers = conio.h windows.h
+compilerOpts = -D_WIN32
+
+---
+
+// Helper to enable VT100 mode on stdout in one call
+static inline void enableVT100() {
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (hOut == INVALID_HANDLE_VALUE) return;
+    DWORD mode = 0;
+    if (!GetConsoleMode(hOut, &mode)) return;
+    SetConsoleMode(hOut, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+}
