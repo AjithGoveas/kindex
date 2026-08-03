@@ -269,7 +269,7 @@ class InteractiveCommand : CliktCommand(
         }
     }
 
-    private fun contentViewRows(): Int = (termH - 6).coerceAtLeast(3)
+    private fun contentViewRows(): Int = (termH - 9).coerceAtLeast(3)
 
     // ─── Rendering ────────────────────────────────────────────────────────────
 
@@ -296,8 +296,20 @@ class InteractiveCommand : CliktCommand(
         }
         drawFrame(w, h)
         drawHeader(w)
-        val bodyTop = 3
-        val bodyBot = h - 2
+
+        val dividerY1 = 5
+        val dividerY2 = h - 3
+        val bodyTop = 6
+        val bodyBot = h - 4
+
+        // Draw top body divider
+        t.w(t.at(dividerY1, 1))
+        t.w("╠" + "═".repeat(MENU_W) + "╬" + "═".repeat(w - MENU_W - 3) + "╣")
+
+        // Draw bottom body divider
+        t.w(t.at(dividerY2, 1))
+        t.w("╠" + "═".repeat(MENU_W) + "╩" + "═".repeat(w - MENU_W - 3) + "╣")
+
         drawMenu(bodyTop, bodyBot, w)
         drawContent(bodyTop, bodyBot, w)
         for (y in bodyTop..bodyBot) if (!covered[y]) contentRow(y, "", w)
@@ -308,47 +320,47 @@ class InteractiveCommand : CliktCommand(
     /** Emit a full-width bordered row (used for header, footer regions). */
     private fun putLine(y: Int, s: String, w: Int, fill: String = "") {
         t.w(t.at(y, 1))
-        t.w("│" + Term.sel(s, w - 2, fill) + "│")
+        t.w("║" + Term.sel(s, w - 2, fill) + "║")
     }
 
     /** Emit a menu-pane row: left border, menu text, divider at the pane split, right border. */
-    private fun menuRow(y: Int, s: String, w: Int, fill: String = "", divider: String = "│") {
+    private fun menuRow(y: Int, s: String, w: Int, fill: String = "", divider: String = "║") {
         val mw = MENU_W - 2
-        t.w(t.at(y, 1)); t.w("│")
+        t.w(t.at(y, 1)); t.w("║")
         t.w(Term.sel(s, mw, fill))
         t.w(t.at(y, MENU_W + 2)); t.w(divider)
-        t.w(t.at(y, w)); t.w("│")
+        t.w(t.at(y, w)); t.w("║")
     }
 
     /** Emit a content-region row: left border, menu divider, content text, right border. */
     private fun contentRow(y: Int, s: String, w: Int, fill: String = "", marker: Boolean = false) {
         if (y in covered.indices) covered[y] = true
         val cw = w - MENU_W - 3
-        val divider = if (marker) "${t.ACCENT2}${t.BOLD}┃${t.RESET}" else "│"
-        t.w(t.at(y, 1)); t.w("│")
+        val divider = if (marker) "${t.ACCENT2}${t.BOLD}║${t.RESET}" else "║"
+        t.w(t.at(y, 1)); t.w("║")
         t.w(t.at(y, MENU_W + 2)); t.w(divider)
         t.w(t.at(y, MENU_W + 3))
         if (marker) {
             val mw = (cw - 2).coerceAtLeast(1)
-            t.w(Term.sel("${t.ACCENT2}${t.BOLD}▸${t.RESET} $s", mw, fill))
+            t.w(Term.sel("${t.ACCENT2}${t.BOLD}▶${t.RESET} $s", mw, fill))
         } else {
             t.w(Term.sel(s, cw, fill))
         }
-        t.w(t.at(y, w)); t.w("│")
+        t.w(t.at(y, w)); t.w("║")
     }
 
     /** Emit a content-region title row with a filled chip and right-aligned tag. */
     private fun titleRow(y: Int, title: String, w: Int, tag: String = "") {
         if (y in covered.indices) covered[y] = true
         val cw = w - MENU_W - 3
-        val left = " ${t.ACCENT2}${t.BOLD}$title${t.RESET}"
-        val right = if (tag.isNotEmpty()) " ${t.MUTED}$tag${t.RESET}" else ""
+        val left = " ${t.MUTED}╠═${t.RESET} ${t.ACCENT2}${t.BOLD}$title${t.RESET} ${t.MUTED}═"
+        val right = if (tag.isNotEmpty()) "═ ${t.MUTED}$tag${t.RESET} ${t.MUTED}═╣${t.RESET} " else "${t.MUTED}═╣${t.RESET} "
         val padN = cw - t.visibleLength(left) - t.visibleLength(right)
-        t.w(t.at(y, 1)); t.w("│")
-        t.w(t.at(y, MENU_W + 2)); t.w("│")
+        t.w(t.at(y, 1)); t.w("║")
+        t.w(t.at(y, MENU_W + 2)); t.w("║")
         t.w(t.at(y, MENU_W + 3))
-        t.w(t.BG_TITLE + left + " ".repeat(padN.coerceAtLeast(0)) + right + t.RESET)
-        t.w(t.at(y, w)); t.w("│")
+        t.w(t.MUTED + left + "═".repeat(padN.coerceAtLeast(0)) + right + t.RESET)
+        t.w(t.at(y, w)); t.w("║")
     }
 
     /** A small keycap chip used in hint bars and dialogs. */
@@ -377,48 +389,92 @@ class InteractiveCommand : CliktCommand(
     }
 
     private fun drawFrame(w: Int, h: Int) {
-        t.w(t.at(1, 1)); t.w("╭" + "─".repeat(w - 2) + "╮")
-        t.w(t.at(h, 1)); t.w("╰" + "─".repeat(w - 2) + "╯")
+        t.w(t.at(1, 1)); t.w("╔" + "═".repeat(w - 2) + "╗")
+        t.w(t.at(h, 1)); t.w("╚" + "═".repeat(w - 3) + "╝") // Omit last column cell to prevent scroll-up flicker
     }
 
     private fun drawHeader(w: Int) {
         val repoName = rootDir.name.ifEmpty { rootDir.path.substringAfterLast('/').substringAfterLast('\\') }
-        val logo = "◆ " + Term.gradient("KINDEX", Triple(139, 92, 246), Triple(34, 211, 238))
-        val left = "${logo} ${t.MUTED}v1.0.0${t.RESET}"
-        val mode = stateTag()
-        val right = "${keycap(mode)}  ${t.MUTED}$repoName${t.RESET}"
-        val padLen = (w - 2 - t.visibleLength(right)).coerceAtLeast(t.visibleLength(left))
-        putLine(1, t.pad(t.fit(left, padLen), padLen) + right, w, t.BG_TITLE)
 
+        // Neon Cyber Gradient
+        val c1 = Triple(0, 229, 255)   // Electric Cyan
+        val c2 = Triple(99, 102, 241)  // Indigo
+        val c3 = Triple(236, 72, 153)  // Hot Pink
+
+        // Totally new sleek, modern half-block geometric logo (Exactly 28 chars wide)
+        val raw1 = " █▄▀  █  █▄ █  █▀▄  █▀▀  ▀▄▀"
+        val raw2 = " █▀▄  █  █ ▀█  █ █  █▀▀   █ "
+        val raw3 = " ▀ ▀  ▀  ▀  ▀  ▀▀   ▀▀▀  ▀ ▀"
+
+        val logo1 = Term.gradient(raw1, c1, c3)
+        val logo2 = Term.gradient(raw2, c1, c3)
+        val logo3 = Term.gradient(raw3, c1, c3)
+
+        // cw = exactly the body content width (same formula as contentRow)
+        val cw = w - MENU_W - 3
+
+        // Row 2: Logo Row 1 & Repo Path
+        val r2Right = " ${t.MUTED}path ${t.RESET}${t.BRIGHT}${rootDir.absolutePath}${t.RESET}"
+        t.w(t.at(2, 1))
+        t.w("║" + logo1 + "║" + Term.sel(r2Right, cw, t.BG_TITLE) + "║")
+
+        // Row 3: Logo Row 2 & Stats
         val stats = statsCache
-        val left2 = if (stats != null) {
-            "  ${t.MUTED}files ${t.RESET}${t.CYAN}${stats.fileCount}${t.RESET}  ${t.MUTED}symbols ${t.RESET}${t.CYAN}${stats.symbolCount}${t.RESET}  ${t.MUTED}edges ${t.RESET}${t.CYAN}${stats.edgeCount}${t.RESET}"
+        val r3Right = if (stats != null) {
+            "  ${t.MUTED}files ${t.RESET}${t.CYAN}${stats.fileCount}${t.RESET}  " +
+                    "${t.MUTED}symbols ${t.RESET}${t.CYAN}${stats.symbolCount}${t.RESET}  " +
+                    "${t.MUTED}edges ${t.RESET}${t.CYAN}${stats.edgeCount}${t.RESET}"
         } else {
-            "  ${t.MUTED}no index stats${t.RESET}"
+            "  ${t.MUTED}no index — run ${t.RESET}${t.ACCENT}kindex scan${t.RESET}"
         }
-        val right2 = "${t.MUTED}alt-buffer · raw keys${t.RESET}"
-        val pad2 = (w - 2 - t.visibleLength(right2)).coerceAtLeast(t.visibleLength(left2))
-        putLine(2, t.pad(t.fit(left2, pad2), pad2) + right2, w, t.BG_TITLE)
+        t.w(t.at(3, 1))
+        t.w("║" + logo2 + "║" + Term.sel(r3Right, cw, t.BG_TITLE) + "║")
+
+        // Row 4: Logo Row 3 & Mode + repo name
+        val mode = stateTag()
+        val r4Right = " ${keycap(" $mode ")}  ${t.MUTED}$repoName  ·  alt-buffer  ·  raw keys${t.RESET}"
+        t.w(t.at(4, 1))
+        t.w("║" + logo3 + "║" + Term.sel(r4Right, cw, t.BG_TITLE) + "║")
     }
 
     private fun drawMenu(y0: Int, y1: Int, w: Int) {
-        for (yy in y0..y1) menuRow(yy, " ", w, t.BG_ROW)
-        menuRow(y0, " ${t.MUTED}${t.BOLD}M E N U${t.RESET}", w, t.BG_ROW)
-        var y = y0 + 1
+        // Background fill
+        for (yy in y0..y1) menuRow(yy, "", w, t.BG_ROW)
+
+        // Header: app name + version chip (Updated to match electric gradient)
+        val hdr = " ${Term.gradient("⎈ KIndex", Triple(0, 229, 255), Triple(236, 72, 153))}  ${t.MUTED}v1.0${t.RESET}"
+        menuRow(y0, hdr, w, t.BG_ROW)
+
+        // Thin separator
+        val sep = " ${t.MUTED}${"─".repeat(MENU_W - 3)}${t.RESET}"
+        menuRow(y0 + 1, sep, w, t.BG_ROW)
+
+        var y = y0 + 2
         MENU.forEachIndexed { i, item ->
             if (y > y1 - 2) return@forEachIndexed
             val active = state is State.Home && i == menuSel
-            val keyPart = if (active) "${t.ACCENT2}${t.BOLD}${item.key}${t.RESET}" else "${t.CYAN}${t.BOLD}${item.key}${t.RESET}"
-            val bracketPart = if (active) "${t.ACCENT2}[${keyPart}${t.ACCENT2}]${t.RESET}" else "${t.MUTED}[${keyPart}${t.MUTED}]${t.RESET}"
-            val iconPart = if (active) "${t.ACCENT2}${item.icon}" else "${t.MUTED}${item.icon}"
-            val labelPart = if (active) "${t.BRIGHT}${t.BOLD}${item.label}" else "${t.BRIGHT}${item.label}"
-            val rowStr = " $bracketPart $iconPart $labelPart"
-            val divider = if (active) "${t.ACCENT2}${t.BOLD}┃${t.RESET}" else "│"
-            menuRow(y, rowStr, w, if (active) t.BG_SEL else t.BG_ROW, divider)
+            if (active) {
+                // Active item: full-highlight row with left accent bar via cursor movement
+                val keyPart   = "${t.ACCENT2}${t.BOLD}${item.key}${t.RESET}"
+                val iconPart  = "${t.ACCENT2}${item.icon}${t.RESET}"
+                val labelPart = "${t.BRIGHT}${t.BOLD}${item.label}${t.RESET}"
+                val rowStr    = "${t.ACCENT2}▌${t.RESET} ${t.MUTED}[${keyPart}${t.MUTED}]${t.RESET} $iconPart $labelPart"
+                menuRow(y, rowStr, w, t.BG_SEL_HOT, "${t.ACCENT2}${t.BOLD}┃${t.RESET}")
+            } else {
+                val keyPart   = "${t.CYAN}${item.key}${t.RESET}"
+                val iconPart  = "${t.MUTED}${item.icon}${t.RESET}"
+                val labelPart = "${t.BRIGHT}${item.label}${t.RESET}"
+                val rowStr    = "  ${t.MUTED}[${keyPart}${t.MUTED}]${t.RESET} $iconPart $labelPart"
+                menuRow(y, rowStr, w, t.BG_ROW, "${t.MUTED}│${t.RESET}")
+            }
             y++
         }
-        if (y1 - 1 > y0 + 1) {
-            menuRow(y1 - 1, " ${t.DIM}${MENU[menuSel].desc}${t.RESET}", w, t.BG_ROW)
+
+        // Bottom description strip for active item
+        if (y1 - 1 >= y0 + 2) {
+            val desc = MENU[menuSel].desc
+            val descLine = " ${t.DIM}▸ $desc${t.RESET}"
+            menuRow(y1 - 1, descLine, w, t.BG_ROW)
         }
     }
 
@@ -578,31 +634,31 @@ class InteractiveCommand : CliktCommand(
 
     private fun drawFooter(w: Int, h: Int) {
         val status = when (val s = state) {
-            is State.Home -> MENU[menuSel].desc
+            is State.Home -> "${t.ACCENT2}${MENU[menuSel].icon}${t.RESET}  ${t.DIM}${MENU[menuSel].desc}${t.RESET}"
             is State.Content -> {
                 val base = s.model.status
                 val view = contentViewRows() - 2
                 val extra = buildString {
-                    if (s.model.selectable.isNotEmpty()) append(" · ${s.sel + 1}/${s.model.selectable.size}")
-                    if (s.model.rows.size > view) append(" · ${s.scroll + 1}-${s.scroll + view}/${s.model.rows.size}")
+                    if (s.model.selectable.isNotEmpty()) append("  ${t.MUTED}·${t.RESET}  ${t.CYAN}${s.sel + 1}/${s.model.selectable.size}${t.RESET}")
+                    if (s.model.rows.size > view) append("  ${t.MUTED}·${t.RESET}  ${t.DIM}rows ${s.scroll + 1}–${(s.scroll + view).coerceAtMost(s.model.rows.size)}/${s.model.rows.size}${t.RESET}")
                 }
-                base + extra
+                "${t.DIM}$base${t.RESET}$extra"
             }
-            is State.Input -> s.prompt
-            is State.Export -> s.msg ?: "Select granularity & format, then press Enter"
-            is State.Confirm -> s.prompt
+            is State.Input  -> "${t.DIM}${s.prompt}${t.RESET}"
+            is State.Export -> "${t.DIM}${s.msg ?: "Select granularity & format, then press Enter"}${t.RESET}"
+            is State.Confirm -> "${t.DIM}${s.prompt}${t.RESET}"
         }
-        putLine(h - 1, " ${t.DIM}$status${t.RESET}", w)
+        putLine(h - 2, " $status", w)
 
         val hints = when (val s = state) {
-            State.Home -> listOf("↑↓" to "Navigate", "↵" to "Open", "A-Z Key" to "Jump", "Esc/q" to "Quit")
-            is State.Content -> listOf("↑↓" to "Move", "PgDn" to "Scroll", "↵" to "Open", "Esc" to "Back", "q" to "Quit")
-            is State.Input -> listOf("↵" to "Confirm", "Esc" to "Cancel")
-            is State.Export -> listOf("g" to "Granularity", "m/d/j" to "Format", "↵" to "Export", "Esc" to "Back")
-            is State.Confirm -> listOf("←→/Tab" to "Select", "↵" to "Confirm", "Esc" to "Cancel")
+            State.Home       -> listOf("↑↓" to "Navigate", "↵" to "Open", "A-Z" to "Jump", "Esc/q" to "Quit")
+            is State.Content -> listOf("↑↓" to "Move", "PgDn" to "Page", "↵" to "Open", "Esc" to "Back", "q" to "Quit")
+            is State.Input   -> listOf("↵" to "Confirm", "Esc" to "Cancel")
+            is State.Export  -> listOf("g" to "Granularity", "m/d/j" to "Format", "↵" to "Export", "Esc" to "Back")
+            is State.Confirm -> listOf("←→" to "Select", "↵" to "Confirm", "Esc" to "Cancel")
         }
-        val bar = hints.joinToString("  ") { (k, lbl) -> "${keycap(k)} ${t.DIM}$lbl${t.RESET}" }
-        putLine(h, bar, w, t.BG_TITLE)
+        val bar = hints.joinToString("   ") { (k, lbl) -> "${keycap(" $k ")} ${t.DIM}$lbl${t.RESET}" }
+        putLine(h - 1, " $bar", w, t.BG_TITLE)
     }
 
     private fun ansiRow(label: String, value: String, width: Int): String {
