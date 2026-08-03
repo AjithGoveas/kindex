@@ -52,7 +52,7 @@ private sealed class State {
     class Content(val model: ContentModel, val sel: Int = 0, val scroll: Int = 0) : State()
     class Input(val prompt: String, val onCommit: (String) -> Unit) : State()
     class Export(val gran: Int, val fmt: Int, val msg: String?) : State()
-    class Confirm(val prompt: String, val onYes: () -> Unit) : State()
+    class Confirm(val prompt: String, val selectedYes: Boolean = true, val onYes: () -> Unit) : State()
 }
 
 class InteractiveCommand : CliktCommand(
@@ -218,18 +218,23 @@ class InteractiveCommand : CliktCommand(
 
     private fun handleConfirm(k: KeyEvent, s: State.Confirm) {
         when (k) {
-            KeyEvent.Enter -> s.onYes()
+            KeyEvent.Left, KeyEvent.Right, KeyEvent.Tab -> {
+                state = State.Confirm(s.prompt, !s.selectedYes, s.onYes)
+            }
+            KeyEvent.Enter -> {
+                if (s.selectedYes) s.onYes() else state = State.Home
+            }
             KeyEvent.Escape -> state = State.Home
-            is KeyEvent.Character -> when (k.c) {
-                'y', 'Y' -> s.onYes()
-                'n', 'N', 'q' -> state = State.Home
+            is KeyEvent.Character -> when (k.c.lowercaseChar()) {
+                'y' -> s.onYes()
+                'n', 'q' -> state = State.Home
             }
             else -> {}
         }
     }
 
     private fun confirmQuit() {
-        state = State.Confirm("Quit KIndex?") { quitFlag = true }
+        state = State.Confirm("Quit KIndex?", true) { quitFlag = true }
     }
 
     private fun beginInput(prompt: String, build: (String) -> ContentModel) {
@@ -277,7 +282,11 @@ class InteractiveCommand : CliktCommand(
             t.flush(); return
         }
         t.buf.clear()
-        if (covered.size <= h) covered = BooleanArray(h + 1)
+        if (covered.size != h + 1) {
+            covered = BooleanArray(h + 1)
+        } else {
+            covered.fill(false)
+        }
         if (firstRender || lastSize != (w to h)) {
             t.w(t.CLEAR)
             firstRender = false
@@ -502,7 +511,9 @@ class InteractiveCommand : CliktCommand(
         t.w(t.at(by, bx));     t.w(Term.sel("", bw, t.BG_SEL_HOT))
         t.w(t.at(by + 1, bx)); t.w(Term.sel(" ${t.MUTED}${t.BOLD}CONFIRM${t.RESET}", bw, t.BG_SEL_HOT))
         t.w(t.at(by + 2, bx)); t.w(Term.sel(" ${t.WARN}${t.BOLD}${s.prompt}${t.RESET}", bw, t.BG_SEL_HOT))
-        t.w(t.at(by + 3, bx)); t.w(Term.sel("  ${keycap("Y")}es   ${keycap("N")}o", bw, t.BG_SEL_HOT))
+        val yesPart = if (s.selectedYes) " ${t.BG_SEL} ${t.SUCCESS}${t.BOLD}Yes${t.RESET}${t.BG_SEL_HOT} " else " ${t.MUTED}Yes${t.RESET} "
+        val noPart = if (!s.selectedYes) " ${t.BG_SEL} ${t.RED}${t.BOLD}No${t.RESET}${t.BG_SEL_HOT} " else " ${t.MUTED}No${t.RESET} "
+        t.w(t.at(by + 3, bx)); t.w(Term.sel("   $yesPart   $noPart", bw, t.BG_SEL_HOT))
         t.w(t.at(by + 4, bx)); t.w(Term.sel("", bw, t.BG_SEL_HOT))
     }
 
@@ -529,7 +540,7 @@ class InteractiveCommand : CliktCommand(
             is State.Content -> listOf("↑↓" to "Move", "PgDn" to "Scroll", "↵" to "Open", "Esc" to "Back", "q" to "Quit")
             is State.Input -> listOf("↵" to "Confirm", "Esc" to "Cancel")
             is State.Export -> listOf("g" to "Granularity", "m/d/j" to "Format", "↵" to "Export", "Esc" to "Back")
-            is State.Confirm -> listOf("y" to "Yes", "n" to "No")
+            is State.Confirm -> listOf("←→/Tab" to "Select", "↵" to "Confirm", "Esc" to "Cancel")
         }
         val bar = hints.joinToString("  ") { (k, lbl) -> "${keycap(k)} ${t.DIM}$lbl${t.RESET}" }
         putLine(h, bar, w, t.BG_TITLE)
