@@ -20,6 +20,13 @@ class TuiScreens(private val rootDir: MPFile, private val storage: IndexStorage)
     private val B = Term.BOLD
     private val D = Term.DIM
 
+    private fun ansiRow(label: String, value: String, width: Int): String {
+        val visL = Term.visibleLength(label)
+        val visV = Term.visibleLength(value)
+        val pad = (width - visL - visV).coerceAtLeast(0)
+        return label + " ".repeat(pad) + value
+    }
+
     private fun shortName(path: String) = path.replace('\\', '/').substringAfterLast('/')
     private fun langOf(path: String): String = path.substringAfterLast('.').uppercase()
 
@@ -64,18 +71,19 @@ class TuiScreens(private val rootDir: MPFile, private val storage: IndexStorage)
         val rows = mutableListOf<String>()
         val selectable = mutableListOf<Int>()
         val moduleAt = mutableMapOf<Int, ModuleGroup>()
+        val w = 36
 
         rows.add(""); rows.add("  ${Term.ACCENT2}$B Repository Overview${Term.RESET}"); rows.add("")
         rows.add("  ${Term.MUTED}Path ${Term.RESET} ${Term.BRIGHT}${rootDir.absolutePath}${Term.RESET}")
         rows.add("  ${Term.MUTED}Index${Term.RESET}  ${Term.SUCCESS}${B}ok${Term.RESET}  ${D}${rootDir.path}/.kindex/index.db${Term.RESET}")
-        rows.add(""); rows.add("  ${Term.MUTED}${"─".repeat(46)}${Term.RESET}"); rows.add("")
-        rows.add("  ${Term.MUTED}Files      ${Term.RESET} $B${Term.CYAN}${s.fileCount}${Term.RESET}")
-        rows.add("  ${Term.MUTED}Symbols    ${Term.RESET} $B${Term.CYAN}${s.symbolCount}${Term.RESET}")
-        rows.add("  ${Term.MUTED}Packages   ${Term.RESET} $B${Term.CYAN}${s.packageCount}${Term.RESET}")
-        rows.add("  ${Term.MUTED}Classes    ${Term.RESET} $B${Term.CYAN}${s.classCount}${Term.RESET}")
-        rows.add("  ${Term.MUTED}Functions  ${Term.RESET} $B${Term.CYAN}${s.functionCount}${Term.RESET}")
-        rows.add("  ${Term.MUTED}Edges      ${Term.RESET} $B${Term.CYAN}${s.edgeCount}${Term.RESET}")
-        rows.add(""); rows.add("  ${Term.MUTED}${"─".repeat(46)}${Term.RESET}"); rows.add("")
+        rows.add(""); rows.add("  ${Term.MUTED}${"─".repeat(w + 4)}${Term.RESET}"); rows.add("")
+        rows.add(ansiRow("  ${Term.MUTED}📁 Files${Term.RESET}", "${Term.CYAN}${B}${s.fileCount}${Term.RESET}", w))
+        rows.add(ansiRow("  ${Term.MUTED}◈ Symbols${Term.RESET}", "${Term.CYAN}${B}${s.symbolCount}${Term.RESET}", w))
+        rows.add(ansiRow("  ${Term.MUTED}📦 Packages${Term.RESET}", "${Term.CYAN}${B}${s.packageCount}${Term.RESET}", w))
+        rows.add(ansiRow("  ${Term.MUTED}🗂 Classes${Term.RESET}", "${Term.CYAN}${B}${s.classCount}${Term.RESET}", w))
+        rows.add(ansiRow("  ${Term.MUTED}⚙ Functions${Term.RESET}", "${Term.CYAN}${B}${s.functionCount}${Term.RESET}", w))
+        rows.add(ansiRow("  ${Term.MUTED}⇄ Edges${Term.RESET}", "${Term.CYAN}${B}${s.edgeCount}${Term.RESET}", w))
+        rows.add(""); rows.add("  ${Term.MUTED}${"─".repeat(w + 4)}${Term.RESET}"); rows.add("")
         rows.add("  ${Term.ACCENT2}$B Modules${Term.RESET}  ${D}(${groups.size})${Term.RESET}")
         groups.forEach { g ->
             val r = rows.size

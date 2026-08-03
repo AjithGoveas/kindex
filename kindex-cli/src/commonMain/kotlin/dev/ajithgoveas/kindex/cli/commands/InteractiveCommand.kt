@@ -24,22 +24,22 @@ import dev.ajithgoveas.kindex.storage.RepositoryStats
 
 // ─── Application model ───────────────────────────────────────────────────────
 
-private data class MenuItem(val icon: String, val label: String, val desc: String)
+private data class MenuItem(val key: Char, val icon: String, val label: String, val desc: String)
 
 private val MENU = listOf(
-    MenuItem("◉", "Dashboard", "Repository overview & module summary"),
-    MenuItem("⌕", "Search Symbols", "Fuzzy full-text symbol search"),
-    MenuItem("⇄", "Dependencies", "Incoming / outgoing references"),
-    MenuItem("≡", "Repository Stats", "Structural metrics & breakdowns"),
-    MenuItem("⌬", "Architecture Flow", "Architectural layer classification"),
-    MenuItem("▦", "Module Map", "Cross-module dependency graph"),
-    MenuItem("⇩", "Export", "Mermaid / DOT / JSON diagrams"),
-    MenuItem("✖", "Dead Code", "Unreferenced class & interface candidates"),
-    MenuItem("▤", "Files", "Browse every indexed source file"),
-    MenuItem("◈", "Symbol Browser", "Browse symbols with type filters"),
-    MenuItem("⟳", "Scan Now", "Re-index changed files in place"),
-    MenuItem("ℹ", "About", "Version, keys & security model"),
-    MenuItem("✕", "Quit", "Exit KIndex")
+    MenuItem('D', "◉", "Dashboard", "Repository overview & module summary"),
+    MenuItem('S', "⌕", "Search Symbols", "Fuzzy full-text symbol search"),
+    MenuItem('E', "⇄", "Dependencies", "Incoming / outgoing references"),
+    MenuItem('T', "≡", "Repository Stats", "Structural metrics & breakdowns"),
+    MenuItem('F', "⌬", "Architecture Flow", "Architectural layer classification"),
+    MenuItem('M', "▦", "Module Map", "Cross-module dependency graph"),
+    MenuItem('X', "⇩", "Export", "Mermaid / DOT / JSON diagrams"),
+    MenuItem('C', "✖", "Dead Code", "Unreferenced class & interface candidates"),
+    MenuItem('L', "▤", "Files", "Browse every indexed source file"),
+    MenuItem('B', "◈", "Symbol Browser", "Browse symbols with type filters"),
+    MenuItem('R', "⟳", "Scan Now", "Re-index changed files in place"),
+    MenuItem('A', "ℹ", "About", "Version, keys & security model"),
+    MenuItem('Q', "✕", "Quit", "Exit KIndex")
 )
 
 private val GRANS = listOf("flow", "file", "package", "symbol")
@@ -131,11 +131,12 @@ class InteractiveCommand : CliktCommand(
             KeyEvent.End   -> menuSel = MENU.size - 1
             KeyEvent.Enter -> activate(menuSel)
             KeyEvent.Escape -> confirmQuit()
-            is KeyEvent.Character -> when {
-                k.c == 'q' -> confirmQuit()
-                k.c.isDigit() -> {
-                    val n = k.c.digitToInt()
-                    if (n in 1..MENU.size) { menuSel = n - 1; activate(menuSel) }
+            is KeyEvent.Character -> {
+                val c = k.c.uppercaseChar()
+                val idx = MENU.indexOfFirst { it.key == c }
+                if (idx >= 0) {
+                    menuSel = idx
+                    activate(idx)
                 }
             }
             else -> {}
@@ -154,7 +155,11 @@ class InteractiveCommand : CliktCommand(
             7  -> open(screens.dead())
             8  -> open(screens.files())
             9  -> open(screens.symbolBrowser())
-            10 -> open(screens.scan())
+            10 -> {
+                state = State.Content(ContentModel.text("Scan", listOf("", "  ${Term.ACCENT2}⟳ Scanning repository, please wait...${Term.RESET}")), 0, 0)
+                render()
+                open(screens.scan())
+            }
             11 -> open(screens.about())
             12 -> confirmQuit()
         }
@@ -394,11 +399,11 @@ class InteractiveCommand : CliktCommand(
         MENU.forEachIndexed { i, item ->
             if (y > y1 - 2) return@forEachIndexed
             val active = state is State.Home && i == menuSel
-            val num = (i + 1).toString().padStart(2)
-            val numPart = if (active) "${t.ACCENT2}${t.BOLD}$num${t.RESET}" else "${t.MUTED}${t.BOLD}$num${t.RESET}"
+            val keyPart = if (active) "${t.ACCENT2}${t.BOLD}${item.key}${t.RESET}" else "${t.CYAN}${t.BOLD}${item.key}${t.RESET}"
+            val bracketPart = if (active) "${t.ACCENT2}[${keyPart}${t.ACCENT2}]${t.RESET}" else "${t.MUTED}[${keyPart}${t.MUTED}]${t.RESET}"
             val iconPart = if (active) "${t.ACCENT2}${item.icon}" else "${t.MUTED}${item.icon}"
             val labelPart = if (active) "${t.BRIGHT}${t.BOLD}${item.label}" else "${t.BRIGHT}${item.label}"
-            val rowStr = " $numPart $iconPart $labelPart"
+            val rowStr = " $bracketPart $iconPart $labelPart"
             val divider = if (active) "${t.ACCENT2}${t.BOLD}┃${t.RESET}" else "│"
             menuRow(y, rowStr, w, if (active) t.BG_SEL else t.BG_ROW, divider)
             y++
@@ -454,7 +459,12 @@ class InteractiveCommand : CliktCommand(
         val boxY = y0 + 3
         val boxW = (cw - 6).coerceAtLeast(16)
         contentRow(boxY, " ${t.MUTED}╭${"─".repeat(boxW)}╮${t.RESET}", w)
-        contentRow(boxY + 1, " ${t.MUTED}│${t.RESET} ${t.ACCENT2}${t.BOLD}❯${t.RESET} ${t.BRIGHT}${t.fit(inputBuf, boxW - 4)}${t.ACCENT}▌${t.RESET}", w)
+        val visibleInput = if (inputBuf.length > boxW - 4) {
+            "…" + inputBuf.takeLast(boxW - 5)
+        } else {
+            inputBuf
+        }
+        contentRow(boxY + 1, " ${t.MUTED}│${t.RESET} ${t.ACCENT2}${t.BOLD}❯${t.RESET} ${t.BRIGHT}${t.fit(visibleInput, boxW - 4)}${t.ACCENT}▌${t.RESET}", w)
         contentRow(boxY + 2, " ${t.MUTED}╰${"─".repeat(boxW)}╯${t.RESET}", w)
         contentRow(boxY + 4, " ${t.DIM}Type to search · Enter confirms · Esc cancels${t.RESET}", w)
     }
@@ -515,7 +525,7 @@ class InteractiveCommand : CliktCommand(
         putLine(h - 1, " ${t.DIM}$status${t.RESET}", w)
 
         val hints = when (val s = state) {
-            State.Home -> listOf("↑↓" to "Navigate", "↵" to "Open", "1-9" to "Jump", "Esc/q" to "Quit")
+            State.Home -> listOf("↑↓" to "Navigate", "↵" to "Open", "A-Z Key" to "Jump", "Esc/q" to "Quit")
             is State.Content -> listOf("↑↓" to "Move", "PgDn" to "Scroll", "↵" to "Open", "Esc" to "Back", "q" to "Quit")
             is State.Input -> listOf("↵" to "Confirm", "Esc" to "Cancel")
             is State.Export -> listOf("g" to "Granularity", "m/d/j" to "Format", "↵" to "Export", "Esc" to "Back")
@@ -525,25 +535,34 @@ class InteractiveCommand : CliktCommand(
         putLine(h, bar, w, t.BG_TITLE)
     }
 
+    private fun ansiRow(label: String, value: String, width: Int): String {
+        val visL = Term.visibleLength(label)
+        val visV = Term.visibleLength(value)
+        val pad = (width - visL - visV).coerceAtLeast(0)
+        return label + " ".repeat(pad) + value
+    }
+
     private fun homeLines(): List<String> {
         return try {
             val s = statsCache ?: storage.getRepositoryStats()
-            listOf(
-                "",
-                "  ${t.ACCENT2}${t.BOLD}Repository Overview${t.RESET}",
-                "",
-                "  ${t.MUTED}Path ${t.RESET} ${t.BRIGHT}${rootDir.absolutePath}${t.RESET}",
-                "  ${t.MUTED}Index${t.RESET}  ${t.SUCCESS}${t.BOLD}ok${t.RESET}  ${t.DIM}${rootDir.path}/.kindex/index.db${t.RESET}",
-                "",
-                "  ${t.MUTED}Files      ${t.RESET} ${t.BOLD}${t.CYAN}${s.fileCount}${t.RESET}",
-                "  ${t.MUTED}Symbols    ${t.RESET} ${t.BOLD}${t.CYAN}${s.symbolCount}${t.RESET}",
-                "  ${t.MUTED}Packages   ${t.RESET} ${t.BOLD}${t.CYAN}${s.packageCount}${t.RESET}",
-                "  ${t.MUTED}Classes    ${t.RESET} ${t.BOLD}${t.CYAN}${s.classCount}${t.RESET}",
-                "  ${t.MUTED}Functions  ${t.RESET} ${t.BOLD}${t.CYAN}${s.functionCount}${t.RESET}",
-                "  ${t.MUTED}Edges      ${t.RESET} ${t.BOLD}${t.CYAN}${s.edgeCount}${t.RESET}",
-                "",
-                "  ${t.DIM}Select an action from the menu to begin.${t.RESET}"
-            )
+            val w = 36
+            val lines = mutableListOf<String>()
+            lines.add("")
+            lines.add("  ${t.ACCENT2}${t.BOLD}Repository Overview${t.RESET}")
+            lines.add("  ${t.MUTED}${"─".repeat(w + 4)}${t.RESET}")
+            lines.add("  ${t.MUTED}Path ${t.RESET}  ${t.BRIGHT}${rootDir.name.ifEmpty { "KIndex" }}${t.RESET}")
+            lines.add("  ${t.MUTED}Index${t.RESET}  ${t.SUCCESS}${t.BOLD}ok${t.RESET} ${t.DIM}(local)${t.RESET}")
+            lines.add("  ${t.MUTED}${"─".repeat(w + 4)}${t.RESET}")
+            lines.add(ansiRow("  ${t.MUTED}📁 Files${t.RESET}", "${t.CYAN}${t.BOLD}${s.fileCount}${t.RESET}", w))
+            lines.add(ansiRow("  ${t.MUTED}◈ Symbols${t.RESET}", "${t.CYAN}${t.BOLD}${s.symbolCount}${t.RESET}", w))
+            lines.add(ansiRow("  ${t.MUTED}📦 Packages${t.RESET}", "${t.CYAN}${t.BOLD}${s.packageCount}${t.RESET}", w))
+            lines.add(ansiRow("  ${t.MUTED}🗂 Classes${t.RESET}", "${t.CYAN}${t.BOLD}${s.classCount}${t.RESET}", w))
+            lines.add(ansiRow("  ${t.MUTED}⚙ Functions${t.RESET}", "${t.CYAN}${t.BOLD}${s.functionCount}${t.RESET}", w))
+            lines.add(ansiRow("  ${t.MUTED}⇄ Edges${t.RESET}", "${t.CYAN}${t.BOLD}${s.edgeCount}${t.RESET}", w))
+            lines.add("  ${t.MUTED}${"─".repeat(w + 4)}${t.RESET}")
+            lines.add("")
+            lines.add("  ${t.DIM}Press a bracketed shortcut key or use arrow keys.${t.RESET}")
+            lines
         } catch (_: Exception) {
             listOf("", "  ${t.WARN}Could not load stats.${t.RESET}")
         }
