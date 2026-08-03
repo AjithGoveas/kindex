@@ -501,20 +501,79 @@ class InteractiveCommand : CliktCommand(
 
     private fun drawConfirm(y0: Int, y1: Int, w: Int, s: State.Confirm) {
         val cw = w - MENU_W - 3
-        val bw = (s.prompt.length + 14).coerceIn(28, (cw - 6).coerceAtLeast(28))
+        val bw = 42
         val bx = MENU_W + 3 + ((cw - bw) / 2).coerceAtLeast(0)
-        val by = y0 + (y1 - y0) / 2 - 2
-        for (row in by..by + 4) {
+        val by = y0 + (y1 - y0) / 2 - 3
+
+        val bgVal = Term.bg(240, 240, 240)
+        val fgVal = Term.fg(15, 23, 42)
+        val theme = bgVal + fgVal
+
+        // Pre-clear all lines covered by the dialog and shadow
+        for (row in by..by + 7) {
             if (row in covered.indices) covered[row] = true
             t.w(t.at(row, MENU_W + 3)); t.w(" ".repeat(cw))
         }
-        t.w(t.at(by, bx));     t.w(Term.sel("", bw, t.BG_SEL_HOT))
-        t.w(t.at(by + 1, bx)); t.w(Term.sel(" ${t.MUTED}${t.BOLD}CONFIRM${t.RESET}", bw, t.BG_SEL_HOT))
-        t.w(t.at(by + 2, bx)); t.w(Term.sel(" ${t.WARN}${t.BOLD}${s.prompt}${t.RESET}", bw, t.BG_SEL_HOT))
-        val yesPart = if (s.selectedYes) " ${t.BG_SEL} ${t.SUCCESS}${t.BOLD}Yes${t.RESET}${t.BG_SEL_HOT} " else " ${t.MUTED}Yes${t.RESET} "
-        val noPart = if (!s.selectedYes) " ${t.BG_SEL} ${t.RED}${t.BOLD}No${t.RESET}${t.BG_SEL_HOT} " else " ${t.MUTED}No${t.RESET} "
-        t.w(t.at(by + 3, bx)); t.w(Term.sel("   $yesPart   $noPart", bw, t.BG_SEL_HOT))
-        t.w(t.at(by + 4, bx)); t.w(Term.sel("", bw, t.BG_SEL_HOT))
+
+        // Helper to output a styled line of the dialog
+        fun putDialogRow(y: Int, content: String) {
+            t.w(t.at(y, bx))
+            t.w(theme + content + Term.RESET)
+            // Draw right shadow (2 spaces wide)
+            t.w(t.at(y, bx + bw))
+            t.w(Term.bg(15, 23, 42) + "  " + Term.RESET)
+        }
+
+        // Top Border with Title centered
+        val title = " Quit KIndex "
+        val padVal = (bw - 2 - title.length) / 2
+        val topBorder = "╔" + "═".repeat(padVal) + title + "═".repeat(bw - 2 - padVal - title.length) + "╗"
+        putDialogRow(by, topBorder)
+
+        // Row 1: Empty
+        putDialogRow(by + 1, "║" + " ".repeat(bw - 2) + "║")
+
+        // Row 2: Prompt
+        val textLen = Term.visibleLength(s.prompt)
+        val padPrompt = (bw - 2 - textLen).coerceAtLeast(0)
+        val leftPadPrompt = padPrompt / 2
+        val rightPadPrompt = padPrompt - leftPadPrompt
+        val promptRow = "║" + " ".repeat(leftPadPrompt) + "${Term.BOLD}${s.prompt}${Term.RESET}${theme}" + " ".repeat(rightPadPrompt) + "║"
+        putDialogRow(by + 2, promptRow)
+
+        // Row 3: Empty
+        putDialogRow(by + 3, "║" + " ".repeat(bw - 2) + "║")
+
+        // Row 4: Buttons
+        val yesPart = if (s.selectedYes) {
+            "[ ${Term.bg(34, 197, 94)}${Term.fg(255, 255, 255)}${Term.BOLD} Yes ${Term.RESET}${theme} ]"
+        } else {
+            "[ ${Term.bg(200, 200, 200)}${Term.fg(75, 85, 99)} Yes ${Term.RESET}${theme} ]"
+        }
+        val noPart = if (!s.selectedYes) {
+            "[ ${Term.bg(239, 68, 68)}${Term.fg(255, 255, 255)}${Term.BOLD}  No  ${Term.RESET}${theme} ]"
+        } else {
+            "[ ${Term.bg(200, 200, 200)}${Term.fg(75, 85, 99)}  No  ${Term.RESET}${theme} ]"
+        }
+        val btnRowContent = "     $yesPart     $noPart     "
+        val btnRowLen = Term.visibleLength(btnRowContent)
+        val padBtns = (bw - 2 - btnRowLen).coerceAtLeast(0)
+        val leftPadBtns = padBtns / 2
+        val rightPadBtns = padBtns - leftPadBtns
+        val btnRow = "║" + " ".repeat(leftPadBtns) + btnRowContent + " ".repeat(rightPadBtns) + "║"
+        putDialogRow(by + 4, btnRow)
+
+        // Row 5: Empty
+        putDialogRow(by + 5, "║" + " ".repeat(bw - 2) + "║")
+
+        // Bottom Border
+        val botBorder = "╚" + "═".repeat(bw - 2) + "╝"
+        putDialogRow(by + 6, botBorder)
+
+        // Row 7: Bottom shadow
+        val shadowY = by + 7
+        t.w(t.at(shadowY, bx + 2))
+        t.w(Term.bg(15, 23, 42) + " ".repeat(bw) + Term.RESET)
     }
 
     private fun drawFooter(w: Int, h: Int) {
