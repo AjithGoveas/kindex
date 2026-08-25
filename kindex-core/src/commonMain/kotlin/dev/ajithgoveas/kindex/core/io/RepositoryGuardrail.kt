@@ -2,14 +2,17 @@ package dev.ajithgoveas.kindex.core.io
 
 class RepositoryBoundaryException(message: String) : Exception(message)
 
+expect val isFileSystemCaseSensitive: Boolean
+
 object RepositoryGuardrail {
 
     fun isWithinRepository(target: MPFile, repoRoot: MPFile): Boolean {
         val rootCanonical = repoRoot.absolutePath.replace('\\', '/').trimEnd('/')
         val targetCanonical = target.absolutePath.replace('\\', '/').trimEnd('/')
+        val ignoreCase = !isFileSystemCaseSensitive
 
-        return targetCanonical.equals(rootCanonical, ignoreCase = true) || 
-               targetCanonical.startsWith("$rootCanonical/", ignoreCase = true)
+        return targetCanonical.equals(rootCanonical, ignoreCase = ignoreCase) || 
+               targetCanonical.startsWith("$rootCanonical/", ignoreCase = ignoreCase)
     }
 
     fun assertWithinRepository(target: MPFile, repoRoot: MPFile) {

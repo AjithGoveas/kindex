@@ -30,11 +30,11 @@ expect fun getInteractiveCommand(): CliktCommand?
 
 class KIndex : CliktCommand(
     name = "kindex",
-    help = "Code Knowledge Indexer v1.0.0",
+    help = "Code Knowledge Indexer v${dev.ajithgoveas.kindex.core.BuildConst.VERSION}",
     invokeWithoutSubcommand = true
 ) {
     init {
-        versionOption("1.0.0", names = setOf("-v", "--version"))
+        versionOption(dev.ajithgoveas.kindex.core.BuildConst.VERSION, names = setOf("-v", "--version"))
     }
     override fun run() {
         if (currentContext.invokedSubcommand == null) {
@@ -44,11 +44,18 @@ class KIndex : CliktCommand(
 }
 
 fun walkFiles(dir: MPFile): List<MPFile> {
+    val defaultIgnoredDirs = setOf(
+        ".git", "build", ".gradle", ".kindex", "dist", "third_party", "tsbuild", "node_modules", ".idea", ".vscode", "target", "bin", "obj"
+    )
     val results = mutableListOf<MPFile>()
     val files = dir.listFiles() ?: return emptyList()
     for (file in files) {
+        val name = file.name
+        if (file.isDirectory && name in defaultIgnoredDirs) {
+            continue
+        }
         val path = file.path.replace('\\', '/')
-        if (path.contains("/build/") || path.contains("/.gradle/") || path.contains("/.kindex/") || path.contains("/nativeInterop/") || path.contains("/cinterop/") || path.contains("/dist/") || path.contains("/tsbuild/")) {
+        if (path.contains("/build/") || path.contains("/.gradle/") || path.contains("/.kindex/") || path.contains("/dist/")) {
             continue
         }
         if (file.isDirectory) {
