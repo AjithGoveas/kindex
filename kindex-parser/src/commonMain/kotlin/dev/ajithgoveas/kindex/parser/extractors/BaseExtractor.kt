@@ -49,48 +49,92 @@ abstract class BaseExtractor(
                 val rootNode = tree.getRootNode()
                 try {
                     if (rootNode.isNull()) return emptyList()
-                    TSQuery(tsLanguage, queryStr).use { query ->
-                        if (!query.isValid()) return emptyList()
-                        TSQueryCursor().use { cursor ->
-                            try {
-                                cursor.exec(query, rootNode)
-                                val matches = cursor.getMatches()
-                                while (matches.hasNext()) {
-                                    val match = matches.next()
+
+                    val primaryQuery = try {
+                        val q = TSQuery(tsLanguage, queryStr)
+                        if (q.isValid()) q else { q.close(); null }
+                    } catch (_: Throwable) {
+                        null
+                    }
+
+                    val queriesToRun = mutableListOf<TSQuery>()
+
+                    if (primaryQuery != null) {
+                        queriesToRun.add(primaryQuery)
+                    } else {
+                        val validLines = queryStr.lines()
+                            .map { it.trim() }
+                            .filter { line ->
+                                if (line.isEmpty() || line.startsWith(";")) {
+                                    false
+                                } else {
                                     try {
-                                        val nodesMap = mutableMapOf<String, NodeInfo>()
-                                        val textMap = mutableMapOf<String, String>()
-                                        for (capture in match.getCaptures()) {
-                                            val node = capture.getNode()
-                                            try {
-                                                if (!node.isNull()) {
-                                                    val name = query.getCaptureNameForId(capture.getIndex())
-                                                    val start = minOf(node.getStartByte(), utf8Bytes.size)
-                                                    val end = minOf(node.getEndByte(), utf8Bytes.size)
-                                                    val text =
-                                                        if (start <= end && start >= 0) utf8Bytes.decodeToString(start, end).trim() else ""
-                                                    val children = (0 until node.getChildCount())
-                                                        .mapNotNull { node.getChild(it)?.getType() }
-                                                    nodesMap[name] = NodeInfo(
-                                                        type = node.getType(),
-                                                        startByte = start,
-                                                        endByte = end,
-                                                        startRow = node.getStartPoint().getRow(),
-                                                        endRow = node.getEndPoint().getRow(),
-                                                        childTypes = children
-                                                    )
-                                                    textMap[name] = text
-                                                }
-                                            } finally {
-                                                node.close()
-                                            }
-                                        }
-                                        groups.add(MatchedGroup(nodesMap, textMap))
-                                    } finally {
-                                        match.close()
+                                        val q = TSQuery(tsLanguage, line)
+                                        val ok = q.isValid()
+                                        if (!ok) q.close()
+                                        ok
+                                    } catch (_: Throwable) {
+                                        false
                                     }
                                 }
+                            }
+                        for (line in validLines) {
+                            try {
+                                val q = TSQuery(tsLanguage, line)
+                                if (q.isValid()) queriesToRun.add(q) else q.close()
                             } catch (_: Throwable) {
+                            }
+                        }
+                    }
+
+                    if (queriesToRun.isEmpty()) {
+                        println("kindex: WARNING tree-sitter query rejected for $languageName")
+                        return emptyList()
+                    }
+
+                    for (query in queriesToRun) {
+                        query.use { q ->
+                            TSQueryCursor().use { cursor ->
+                                try {
+                                    cursor.exec(q, rootNode)
+                                    val matches = cursor.getMatches()
+                                    while (matches.hasNext()) {
+                                        val match = matches.next()
+                                        try {
+                                            val nodesMap = mutableMapOf<String, NodeInfo>()
+                                            val textMap = mutableMapOf<String, String>()
+                                            for (capture in match.getCaptures()) {
+                                                val node = capture.getNode()
+                                                try {
+                                                    if (!node.isNull()) {
+                                                        val name = q.getCaptureNameForId(capture.getIndex())
+                                                        val start = minOf(node.getStartByte(), utf8Bytes.size)
+                                                        val end = minOf(node.getEndByte(), utf8Bytes.size)
+                                                        val text =
+                                                            if (start <= end && start >= 0) utf8Bytes.decodeToString(start, end).trim() else ""
+                                                        val children = (0 until node.getChildCount())
+                                                            .mapNotNull { node.getChild(it)?.getType() }
+                                                        nodesMap[name] = NodeInfo(
+                                                            type = node.getType(),
+                                                            startByte = start,
+                                                            endByte = end,
+                                                            startRow = node.getStartPoint().getRow(),
+                                                            endRow = node.getEndPoint().getRow(),
+                                                            childTypes = children
+                                                        )
+                                                        textMap[name] = text
+                                                    }
+                                                } finally {
+                                                    node.close()
+                                                }
+                                            }
+                                            groups.add(MatchedGroup(nodesMap, textMap))
+                                        } finally {
+                                            match.close()
+                                        }
+                                    }
+                                } catch (_: Throwable) {
+                                }
                             }
                         }
                     }

@@ -1,12 +1,11 @@
 headers = tree_sitter/api.h languages.h
 compilerOpts = -Iinclude -DNDEBUG
-staticLibraries = treesitter.lib
-libraryPaths = src/nativeInterop/cinterop/lib
 package = treesitter
 
 ---
 
 #include <stdlib.h>
+#include <stdio.h>
 #include <stdint.h>
 #include <string.h>
 

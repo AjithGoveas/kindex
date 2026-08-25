@@ -21,14 +21,29 @@ class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
             """
             (package_header) @package
             (import_header) @import
+            (import) @import
+            (class_declaration (identifier) @class_name) @class_node
             (class_declaration (type_identifier) @class_name) @class_node
+            (class_declaration (simple_identifier) @class_name) @class_node
+            (object_declaration (identifier) @class_name) @class_node
             (object_declaration (type_identifier) @class_name) @class_node
+            (object_declaration (simple_identifier) @class_name) @class_node
+            (function_declaration (identifier) @function_name) @function_node
             (function_declaration (simple_identifier) @function_name) @function_node
+            (call_expression (identifier) @call_name) @call_node
             (call_expression (simple_identifier) @call_name) @call_node
+            (class_declaration (delegation_specifier (user_type (identifier) @super_name)))
             (class_declaration (delegation_specifier (user_type (type_identifier) @super_name)))
+            (class_declaration (delegation_specifier (user_type (simple_identifier) @super_name)))
+            (class_declaration (delegation_specifier (constructor_invocation (user_type (identifier) @super_name))))
             (class_declaration (delegation_specifier (constructor_invocation (user_type (type_identifier) @super_name))))
+            (class_declaration (delegation_specifier (constructor_invocation (user_type (simple_identifier) @super_name))))
+            (object_declaration (delegation_specifier (user_type (identifier) @super_name)))
             (object_declaration (delegation_specifier (user_type (type_identifier) @super_name)))
+            (object_declaration (delegation_specifier (user_type (simple_identifier) @super_name)))
+            (object_declaration (delegation_specifier (constructor_invocation (user_type (identifier) @super_name))))
             (object_declaration (delegation_specifier (constructor_invocation (user_type (type_identifier) @super_name))))
+            (object_declaration (delegation_specifier (constructor_invocation (user_type (simple_identifier) @super_name))))
             """.trimIndent()
         } else {
             """
@@ -82,6 +97,7 @@ class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
                     .removePrefix("package")
                     .trim()
                     .substringBefore('\n')
+                    .removeSuffix(";")
                     .trim()
                     .ifEmpty { null }
             }
@@ -94,6 +110,7 @@ class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
                             .removePrefix("import")
                             .trim()
                             .substringBefore('\n')
+                            .removeSuffix(";")
                             .trim()
                             .substringBefore(" as ")
                             .trim(),
