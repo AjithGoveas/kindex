@@ -1,3 +1,5 @@
+import java.security.MessageDigest
+
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
 }
@@ -22,7 +24,8 @@ kotlin {
                 binaries {
                     executable {
                         entryPoint = "dev.ajithgoveas.kindex.cli.main"
-                        linkerOpts("-LC:/Users/ajith/.konan/dependencies/lldb-2-windows/bin", "-lsqlite3")
+                        val nativeLibDir = rootProject.file("third_party/dist/mingwX64").absolutePath.replace('\\', '/')
+                        linkerOpts("-L$nativeLibDir", "-lsqlite3", "-ltreesitter", "-Wl,--whole-archive", "-lsqlite3", "-ltreesitter", "-Wl,--no-whole-archive")
                     }
                 }
             }
@@ -72,6 +75,29 @@ kotlin {
         jvmMain.dependencies {
             implementation(libs.jline)
             implementation(libs.jansi)
+        }
+    }
+}
+
+tasks.register("packageNative") {
+    group = "distribution"
+    description = "Packages the standalone native binary to dist/ directory with SHA-256 checksum."
+    dependsOn(":kindex-cli:linkReleaseExecutableMingwX64")
+    doLast {
+        val distDir = rootProject.file("dist")
+        distDir.mkdirs()
+        val exeFile = file("build/bin/mingwX64/releaseExecutable/kindex-cli.exe")
+        if (exeFile.exists()) {
+            val targetExe = File(distDir, "kindex-windows-x64.exe")
+            exeFile.copyTo(targetExe, overwrite = true)
+            val digest = MessageDigest.getInstance("SHA-256")
+            val hashBytes = digest.digest(targetExe.readBytes())
+            val sha256 = hashBytes.joinToString("") { b -> String.format("%02x", b) }
+            File(distDir, "kindex-windows-x64.exe.sha256").writeText("$sha256  kindex-windows-x64.exe\n")
+            println("✓ Packaged native release executable to: ${targetExe.absolutePath}")
+            println("  SHA-256: $sha256")
+        } else {
+            println("⚠ Release executable not found at: ${exeFile.absolutePath}")
         }
     }
 }
