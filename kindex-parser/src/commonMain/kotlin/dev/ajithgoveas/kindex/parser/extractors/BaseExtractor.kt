@@ -15,8 +15,17 @@ abstract class BaseExtractor(
         return file.extension in extensions
     }
 
+    data class NodeInfo(
+        val type: String,
+        val startByte: Int,
+        val endByte: Int,
+        val startRow: Int,
+        val endRow: Int,
+        val childTypes: List<String>
+    )
+
     data class MatchedGroup(
-        val captures: Map<String, TSNode>,
+        val nodes: Map<String, NodeInfo>,
         val text: Map<String, String>
     )
 
@@ -31,40 +40,64 @@ abstract class BaseExtractor(
         sourceCode: String,
         queryStr: String
     ): List<MatchedGroup> {
-        val parser = TSParser()
-        if (!parser.setLanguage(tsLanguage)) return emptyList()
-        val tree = parser.parseString(null, sourceCode)
-        val rootNode = tree.getRootNode()
-        if (rootNode.isNull()) return emptyList()
-
         val groups = mutableListOf<MatchedGroup>()
         val utf8Bytes = sourceCode.encodeToByteArray()
-        val query = TSQuery(tsLanguage, queryStr)
-        if (!query.isValid()) return emptyList()
 
-        val cursor = TSQueryCursor()
-        try {
-            cursor.exec(query, rootNode)
-            val matches = cursor.getMatches()
-            while (matches.hasNext()) {
-                val match = matches.next()
-                val capturesMap = mutableMapOf<String, TSNode>()
-                val textMap = mutableMapOf<String, String>()
-                for (capture in match.getCaptures()) {
-                    val node = capture.getNode()
-                    if (!node.isNull()) {
-                        val name = query.getCaptureNameForId(capture.getIndex())
-                        val start = minOf(node.getStartByte(), utf8Bytes.size)
-                        val end = minOf(node.getEndByte(), utf8Bytes.size)
-                        val text = if (start <= end && start >= 0) utf8Bytes.decodeToString(start, end).trim() else ""
-                        capturesMap[name] = node
-                        textMap[name] = text
+        TSParser().use { parser ->
+            if (!parser.setLanguage(tsLanguage)) return emptyList()
+            parser.parseString(null, sourceCode).use { tree ->
+                val rootNode = tree.getRootNode()
+                try {
+                    if (rootNode.isNull()) return emptyList()
+                    TSQuery(tsLanguage, queryStr).use { query ->
+                        if (!query.isValid()) return emptyList()
+                        TSQueryCursor().use { cursor ->
+                            try {
+                                cursor.exec(query, rootNode)
+                                val matches = cursor.getMatches()
+                                while (matches.hasNext()) {
+                                    val match = matches.next()
+                                    try {
+                                        val nodesMap = mutableMapOf<String, NodeInfo>()
+                                        val textMap = mutableMapOf<String, String>()
+                                        for (capture in match.getCaptures()) {
+                                            val node = capture.getNode()
+                                            try {
+                                                if (!node.isNull()) {
+                                                    val name = query.getCaptureNameForId(capture.getIndex())
+                                                    val start = minOf(node.getStartByte(), utf8Bytes.size)
+                                                    val end = minOf(node.getEndByte(), utf8Bytes.size)
+                                                    val text =
+                                                        if (start <= end && start >= 0) utf8Bytes.decodeToString(start, end).trim() else ""
+                                                    val children = (0 until node.getChildCount())
+                                                        .mapNotNull { node.getChild(it)?.getType() }
+                                                    nodesMap[name] = NodeInfo(
+                                                        type = node.getType(),
+                                                        startByte = start,
+                                                        endByte = end,
+                                                        startRow = node.getStartPoint().getRow(),
+                                                        endRow = node.getEndPoint().getRow(),
+                                                        childTypes = children
+                                                    )
+                                                    textMap[name] = text
+                                                }
+                                            } finally {
+                                                node.close()
+                                            }
+                                        }
+                                        groups.add(MatchedGroup(nodesMap, textMap))
+                                    } finally {
+                                        match.close()
+                                    }
+                                }
+                            } catch (_: Throwable) {
+                            }
+                        }
                     }
+                } finally {
+                    rootNode.close()
                 }
-                groups.add(MatchedGroup(capturesMap, textMap))
             }
-        } catch (_: Throwable) {
-            // Guard against parser/query execution errors
         }
         return groups
     }

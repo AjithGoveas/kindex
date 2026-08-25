@@ -56,14 +56,14 @@ class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
             val matchedPackage = group.text["package"]
             val matchedImport = group.text["import"]
             val className = group.text["class_name"]
-            val classNode = group.captures["class_node"]
+            val classInfo = group.nodes["class_node"]
             val interfaceName = group.text["interface_name"]
-            val interfaceNode = group.captures["interface_node"]
+            val interfaceInfo = group.nodes["interface_node"]
             val functionName = group.text["function_name"]
-            val functionNode = group.captures["function_node"]
+            val functionInfo = group.nodes["function_node"]
 
             // Reference / Call extraction
-            val callNode = group.captures["call_node"]
+            val callInfo = group.nodes["call_node"]
             val callRecv = group.text["call_recv"]
             val callName = group.text["call_name"]
             val classInstantiation = group.text["class_instantiation"]
@@ -93,7 +93,7 @@ class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
                 )
             }
 
-            if (className != null && classNode != null) {
+            if (className != null && classInfo != null) {
                 val fqn = if (packageName != null) "$packageName.$className" else className
                 symbols.add(
                     Symbol(
@@ -102,18 +102,18 @@ class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
                         type = SymbolType.CLASS,
                         filePath = file.path,
                         packageName = packageName,
-                        lineNumber = classNode.getStartPoint().getRow() + 1
+                        lineNumber = classInfo.startRow + 1
                     )
                 )
                 edges.add(Edge(file.path, fqn, RelationType.CONTAINS))
-                classLineRanges.add(ClassLineRange(fqn, classNode.getStartPoint().getRow() + 1, classNode.getEndPoint().getRow() + 1))
+                classLineRanges.add(ClassLineRange(fqn, classInfo.startRow + 1, classInfo.endRow + 1))
 
                 // Class inheritance extraction from header
-                val braceIdx = sourceCode.indexOf('{', classNode.getStartByte())
-                val headerText = if (braceIdx != -1 && braceIdx > classNode.getStartByte()) {
-                    sourceCode.substring(classNode.getStartByte(), braceIdx)
+                val braceIdx = sourceCode.indexOf('{', classInfo.startByte)
+                val headerText = if (braceIdx != -1 && braceIdx > classInfo.startByte) {
+                    sourceCode.substring(classInfo.startByte, braceIdx)
                 } else {
-                    sourceCode.substring(classNode.getStartByte(), classNode.getEndByte())
+                    sourceCode.substring(classInfo.startByte, classInfo.endByte)
                 }
 
                 if (headerText.contains("extends")) {
@@ -142,7 +142,7 @@ class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
                 }
             }
 
-            if (interfaceName != null && interfaceNode != null) {
+            if (interfaceName != null && interfaceInfo != null) {
                 val fqn = if (packageName != null) "$packageName.$interfaceName" else interfaceName
                 symbols.add(
                     Symbol(
@@ -151,18 +151,18 @@ class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
                         type = SymbolType.INTERFACE,
                         filePath = file.path,
                         packageName = packageName,
-                        lineNumber = interfaceNode.getStartPoint().getRow() + 1
+                        lineNumber = interfaceInfo.startRow + 1
                     )
                 )
                 edges.add(Edge(file.path, fqn, RelationType.CONTAINS))
-                classLineRanges.add(ClassLineRange(fqn, interfaceNode.getStartPoint().getRow() + 1, interfaceNode.getEndPoint().getRow() + 1))
+                classLineRanges.add(ClassLineRange(fqn, interfaceInfo.startRow + 1, interfaceInfo.endRow + 1))
 
                 // Interface inheritance from header
-                val braceIdx = sourceCode.indexOf('{', interfaceNode.getStartByte())
-                val headerText = if (braceIdx != -1 && braceIdx > interfaceNode.getStartByte()) {
-                    sourceCode.substring(interfaceNode.getStartByte(), braceIdx)
+                val braceIdx = sourceCode.indexOf('{', interfaceInfo.startByte)
+                val headerText = if (braceIdx != -1 && braceIdx > interfaceInfo.startByte) {
+                    sourceCode.substring(interfaceInfo.startByte, braceIdx)
                 } else {
-                    sourceCode.substring(interfaceNode.getStartByte(), interfaceNode.getEndByte())
+                    sourceCode.substring(interfaceInfo.startByte, interfaceInfo.endByte)
                 }
                 if (headerText.contains("extends")) {
                     val extended = headerText.substringAfter("extends").trim().substringBefore("{").trim().split(",").map { it.trim() }
@@ -182,7 +182,7 @@ class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
                 }
             }
 
-            if (functionName != null && functionNode != null) {
+            if (functionName != null && functionInfo != null) {
                 val fqn = if (packageName != null) "$packageName#$functionName" else functionName
                 symbols.add(
                     Symbol(
@@ -191,16 +191,16 @@ class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
                         type = SymbolType.FUNCTION,
                         filePath = file.path,
                         packageName = packageName,
-                        lineNumber = functionNode.getStartPoint().getRow() + 1
+                        lineNumber = functionInfo.startRow + 1
                     )
                 )
                 edges.add(Edge(file.path, fqn, RelationType.CONTAINS))
-                functionLineRanges.add(MemberLineRange(fqn, functionNode.getStartPoint().getRow() + 1, functionNode.getEndPoint().getRow() + 1))
+                functionLineRanges.add(MemberLineRange(fqn, functionInfo.startRow + 1, functionInfo.endRow + 1))
             }
 
             // Capture calls / instantiations
-            if (callNode != null) {
-                val line = callNode.getStartPoint().getRow() + 1
+            if (callInfo != null) {
+                val line = callInfo.startRow + 1
                 if (classInstantiation != null) {
                     unresolvedCalls.add(UnresolvedCall("REF:$classInstantiation", line))
                 } else if (callName != null) {

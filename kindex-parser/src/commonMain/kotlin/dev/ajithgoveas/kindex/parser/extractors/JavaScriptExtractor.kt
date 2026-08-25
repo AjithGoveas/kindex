@@ -54,13 +54,13 @@ class JavaScriptExtractor : BaseExtractor("JavaScript/TypeScript", listOf("js", 
         for (group in groups) {
             val matchedImport = group.text["import"]
             val className = group.text["class_name"]
-            val classNode = group.captures["class_node"]
+            val classInfo = group.nodes["class_node"]
             val interfaceName = group.text["interface_name"]
-            val interfaceNode = group.captures["interface_node"]
+            val interfaceInfo = group.nodes["interface_node"]
             val functionName = group.text["function_name"]
-            val functionNode = group.captures["function_node"]
+            val functionInfo = group.nodes["function_node"]
 
-            val callNode = group.captures["call_node"]
+            val callInfo = group.nodes["call_node"]
             val callRecv = group.text["call_recv"]
             val callName = group.text["call_name"]
             val classInstantiation = group.text["class_instantiation"]
@@ -70,7 +70,7 @@ class JavaScriptExtractor : BaseExtractor("JavaScript/TypeScript", listOf("js", 
                 edges.add(Edge(file.path, imported, RelationType.IMPORTS))
             }
 
-            if (className != null && classNode != null) {
+            if (className != null && classInfo != null) {
                 symbols.add(
                     Symbol(
                         id = className,
@@ -78,15 +78,15 @@ class JavaScriptExtractor : BaseExtractor("JavaScript/TypeScript", listOf("js", 
                         type = SymbolType.CLASS,
                         filePath = file.path,
                         packageName = "js_module",
-                        lineNumber = classNode.getStartPoint().getRow() + 1
+                        lineNumber = classInfo.startRow + 1
                     )
                 )
                 edges.add(Edge(file.path, className, RelationType.CONTAINS))
-                classLineRanges.add(ClassLineRange(className, classNode.getStartPoint().getRow() + 1, classNode.getEndPoint().getRow() + 1))
+                classLineRanges.add(ClassLineRange(className, classInfo.startRow + 1, classInfo.endRow + 1))
 
                 val sourceBytes = sourceCode.encodeToByteArray()
-                val startB = classNode.getStartByte().coerceIn(0, sourceBytes.size)
-                val endB = classNode.getEndByte().coerceIn(startB, sourceBytes.size)
+                val startB = classInfo.startByte.coerceIn(0, sourceBytes.size)
+                val endB = classInfo.endByte.coerceIn(startB, sourceBytes.size)
                 val headerText = sourceBytes.decodeToString(startB, endB).substringBefore("{")
                 if (headerText.contains("extends")) {
                     val extended = headerText.substringAfter("extends").trim().substringBefore(" ").substringBefore("{").trim()
@@ -96,7 +96,7 @@ class JavaScriptExtractor : BaseExtractor("JavaScript/TypeScript", listOf("js", 
                 }
             }
 
-            if (interfaceName != null && interfaceNode != null) {
+            if (interfaceName != null && interfaceInfo != null) {
                 symbols.add(
                     Symbol(
                         id = interfaceName,
@@ -104,18 +104,18 @@ class JavaScriptExtractor : BaseExtractor("JavaScript/TypeScript", listOf("js", 
                         type = SymbolType.INTERFACE,
                         filePath = file.path,
                         packageName = "js_module",
-                        lineNumber = interfaceNode.getStartPoint().getRow() + 1
+                        lineNumber = interfaceInfo.startRow + 1
                     )
                 )
                 edges.add(Edge(file.path, interfaceName, RelationType.CONTAINS))
-                classLineRanges.add(ClassLineRange(interfaceName, interfaceNode.getStartPoint().getRow() + 1, interfaceNode.getEndPoint().getRow() + 1))
+                classLineRanges.add(ClassLineRange(interfaceName, interfaceInfo.startRow + 1, interfaceInfo.endRow + 1))
 
                 // TS interface extends inheritance
-                val braceIdx = sourceCode.indexOf('{', interfaceNode.getStartByte())
-                val headerText = if (braceIdx != -1 && braceIdx > interfaceNode.getStartByte()) {
-                    sourceCode.substring(interfaceNode.getStartByte(), braceIdx)
+                val braceIdx = sourceCode.indexOf('{', interfaceInfo.startByte)
+                val headerText = if (braceIdx != -1 && braceIdx > interfaceInfo.startByte) {
+                    sourceCode.substring(interfaceInfo.startByte, braceIdx)
                 } else {
-                    sourceCode.substring(interfaceNode.getStartByte(), interfaceNode.getEndByte())
+                    sourceCode.substring(interfaceInfo.startByte, interfaceInfo.endByte)
                 }
                 if (headerText.contains("extends")) {
                     val extended = headerText.substringAfter("extends").trim().substringBefore("{").trim()
@@ -125,7 +125,7 @@ class JavaScriptExtractor : BaseExtractor("JavaScript/TypeScript", listOf("js", 
                 }
             }
 
-            if (functionName != null && functionNode != null) {
+            if (functionName != null && functionInfo != null) {
                 symbols.add(
                     Symbol(
                         id = functionName,
@@ -133,15 +133,15 @@ class JavaScriptExtractor : BaseExtractor("JavaScript/TypeScript", listOf("js", 
                         type = SymbolType.FUNCTION,
                         filePath = file.path,
                         packageName = "js_module",
-                        lineNumber = functionNode.getStartPoint().getRow() + 1
+                        lineNumber = functionInfo.startRow + 1
                     )
                 )
                 edges.add(Edge(file.path, functionName, RelationType.CONTAINS))
-                functionLineRanges.add(MemberLineRange(functionName, functionNode.getStartPoint().getRow() + 1, functionNode.getEndPoint().getRow() + 1))
+                functionLineRanges.add(MemberLineRange(functionName, functionInfo.startRow + 1, functionInfo.endRow + 1))
             }
 
-            if (callNode != null) {
-                val line = callNode.getStartPoint().getRow() + 1
+            if (callInfo != null) {
+                val line = callInfo.startRow + 1
                 if (classInstantiation != null) {
                     unresolvedCalls.add(UnresolvedCall("REF:$classInstantiation", line))
                 } else if (callName != null) {

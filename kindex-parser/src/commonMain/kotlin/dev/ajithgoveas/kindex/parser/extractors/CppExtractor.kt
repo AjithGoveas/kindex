@@ -28,16 +28,16 @@ class CppExtractor : BaseExtractor("C++", listOf("cpp", "cc", "hpp", "h")) {
         for (group in groups) {
             val matchedImport = group.text["import"]
             val className = group.text["class_name"]
-            val classNode = group.captures["class_node"]
+            val classInfo = group.nodes["class_node"]
             val functionName = group.text["function_name"]
-            val functionNode = group.captures["function_node"]
+            val functionInfo = group.nodes["function_node"]
 
             if (matchedImport != null) {
                 val imported = matchedImport.trim(' ', '"', '<', '>')
                 edges.add(Edge(file.path, imported, RelationType.IMPORTS))
             }
 
-            if (className != null && classNode != null) {
+            if (className != null && classInfo != null) {
                 symbols.add(
                     Symbol(
                         id = className,
@@ -45,18 +45,18 @@ class CppExtractor : BaseExtractor("C++", listOf("cpp", "cc", "hpp", "h")) {
                         type = SymbolType.CLASS,
                         filePath = file.path,
                         packageName = "cpp",
-                        lineNumber = classNode.getStartPoint().getRow() + 1
+                        lineNumber = classInfo.startRow + 1
                     )
                 )
                 edges.add(Edge(file.path, className, RelationType.CONTAINS))
-                classLineRanges.add(ClassLineRange(className, classNode.getStartPoint().getRow() + 1, classNode.getEndPoint().getRow() + 1))
+                classLineRanges.add(ClassLineRange(className, classInfo.startRow + 1, classInfo.endRow + 1))
 
                 // C++ class inheritance extraction
-                val braceIdx = sourceCode.indexOf('{', classNode.getStartByte())
-                val headerText = if (braceIdx != -1 && braceIdx > classNode.getStartByte()) {
-                    sourceCode.substring(classNode.getStartByte(), braceIdx)
+                val braceIdx = sourceCode.indexOf('{', classInfo.startByte)
+                val headerText = if (braceIdx != -1 && braceIdx > classInfo.startByte) {
+                    sourceCode.substring(classInfo.startByte, braceIdx)
                 } else {
-                    sourceCode.substring(classNode.getStartByte(), classNode.getEndByte())
+                    sourceCode.substring(classInfo.startByte, classInfo.endByte)
                 }
                 if (headerText.contains(":")) {
                     val extendedList = headerText.substringAfter(":").trim().substringBefore("{").split(",").map {
@@ -70,7 +70,7 @@ class CppExtractor : BaseExtractor("C++", listOf("cpp", "cc", "hpp", "h")) {
                 }
             }
 
-            if (functionName != null && functionNode != null) {
+            if (functionName != null && functionInfo != null) {
                 symbols.add(
                     Symbol(
                         id = functionName,
@@ -78,7 +78,7 @@ class CppExtractor : BaseExtractor("C++", listOf("cpp", "cc", "hpp", "h")) {
                         type = SymbolType.FUNCTION,
                         filePath = file.path,
                         packageName = "cpp",
-                        lineNumber = functionNode.getStartPoint().getRow() + 1
+                        lineNumber = functionInfo.startRow + 1
                     )
                 )
                 edges.add(Edge(file.path, functionName, RelationType.CONTAINS))

@@ -41,16 +41,16 @@ class RustExtractor : BaseExtractor("Rust", listOf("rs")) {
         for (group in groups) {
             val matchedImport = group.text["import"]
             val className = group.text["class_name"]
-            val classNode = group.captures["class_node"]
+            val classInfo = group.nodes["class_node"]
             val interfaceName = group.text["interface_name"]
-            val interfaceNode = group.captures["interface_node"]
+            val interfaceInfo = group.nodes["interface_node"]
             val functionName = group.text["function_name"]
-            val functionNode = group.captures["function_node"]
+            val functionInfo = group.nodes["function_node"]
             val implName = group.text["impl_name"]
             val implTrait = group.text["impl_trait"]
-            val implNode = group.captures["impl_node"]
+            val implInfo = group.nodes["impl_node"]
 
-            val callNode = group.captures["call_node"]
+            val callInfo = group.nodes["call_node"]
             val callRecv = group.text["call_recv"]
             val callName = group.text["call_name"]
 
@@ -61,7 +61,7 @@ class RustExtractor : BaseExtractor("Rust", listOf("rs")) {
                 }
             }
 
-            if (className != null && classNode != null) {
+            if (className != null && classInfo != null) {
                 symbols.add(
                     Symbol(
                         id = className,
@@ -69,14 +69,14 @@ class RustExtractor : BaseExtractor("Rust", listOf("rs")) {
                         type = SymbolType.CLASS,
                         filePath = file.path,
                         packageName = "crate",
-                        lineNumber = classNode.getStartPoint().getRow() + 1
+                        lineNumber = classInfo.startRow + 1
                     )
                 )
                 edges.add(Edge(file.path, className, RelationType.CONTAINS))
-                classLineRanges.add(ClassLineRange(className, classNode.getStartPoint().getRow() + 1, classNode.getEndPoint().getRow() + 1))
+                classLineRanges.add(ClassLineRange(className, classInfo.startRow + 1, classInfo.endRow + 1))
             }
 
-            if (interfaceName != null && interfaceNode != null) {
+            if (interfaceName != null && interfaceInfo != null) {
                 symbols.add(
                     Symbol(
                         id = interfaceName,
@@ -84,21 +84,21 @@ class RustExtractor : BaseExtractor("Rust", listOf("rs")) {
                         type = SymbolType.INTERFACE,
                         filePath = file.path,
                         packageName = "crate",
-                        lineNumber = interfaceNode.getStartPoint().getRow() + 1
+                        lineNumber = interfaceInfo.startRow + 1
                     )
                 )
                 edges.add(Edge(file.path, interfaceName, RelationType.CONTAINS))
-                classLineRanges.add(ClassLineRange(interfaceName, interfaceNode.getStartPoint().getRow() + 1, interfaceNode.getEndPoint().getRow() + 1))
+                classLineRanges.add(ClassLineRange(interfaceName, interfaceInfo.startRow + 1, interfaceInfo.endRow + 1))
             }
 
-            if (implName != null && implNode != null) {
-                classLineRanges.add(ClassLineRange(implName, implNode.getStartPoint().getRow() + 1, implNode.getEndPoint().getRow() + 1))
+            if (implName != null && implInfo != null) {
+                classLineRanges.add(ClassLineRange(implName, implInfo.startRow + 1, implInfo.endRow + 1))
                 if (implTrait != null) {
                     edges.add(Edge(implName, implTrait, RelationType.EXTENDS))
                 }
             }
 
-            if (functionName != null && functionNode != null) {
+            if (functionName != null && functionInfo != null) {
                 symbols.add(
                     Symbol(
                         id = functionName,
@@ -106,15 +106,15 @@ class RustExtractor : BaseExtractor("Rust", listOf("rs")) {
                         type = SymbolType.FUNCTION,
                         filePath = file.path,
                         packageName = "crate",
-                        lineNumber = functionNode.getStartPoint().getRow() + 1
+                        lineNumber = functionInfo.startRow + 1
                     )
                 )
                 edges.add(Edge(file.path, functionName, RelationType.CONTAINS))
-                functionLineRanges.add(MemberLineRange(functionName, functionNode.getStartPoint().getRow() + 1, functionNode.getEndPoint().getRow() + 1))
+                functionLineRanges.add(MemberLineRange(functionName, functionInfo.startRow + 1, functionInfo.endRow + 1))
             }
 
-            if (callNode != null) {
-                val line = callNode.getStartPoint().getRow() + 1
+            if (callInfo != null) {
+                val line = callInfo.startRow + 1
                 if (callName != null) {
                     val refName = if (callRecv != null) "$callRecv.$callName" else callName
                     unresolvedCalls.add(UnresolvedCall("REF:$refName", line))

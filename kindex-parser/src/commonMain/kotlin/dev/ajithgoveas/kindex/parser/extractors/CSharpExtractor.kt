@@ -32,17 +32,17 @@ class CSharpExtractor : BaseExtractor("C#", listOf("cs")) {
         for (group in groups) {
             val matchedImport = group.text["import"]
             val className = group.text["class_name"]
-            val classNode = group.captures["class_node"]
+            val classInfo = group.nodes["class_node"]
             val interfaceName = group.text["interface_name"]
-            val interfaceNode = group.captures["interface_node"]
+            val interfaceInfo = group.nodes["interface_node"]
             val functionName = group.text["function_name"]
-            val functionNode = group.captures["function_node"]
+            val functionInfo = group.nodes["function_node"]
 
             if (matchedImport != null) {
                 edges.add(Edge(file.path, matchedImport, RelationType.IMPORTS))
             }
 
-            if (className != null && classNode != null) {
+            if (className != null && classInfo != null) {
                 val fqn = "$packageName.$className"
                 symbols.add(
                     Symbol(
@@ -51,18 +51,18 @@ class CSharpExtractor : BaseExtractor("C#", listOf("cs")) {
                         type = SymbolType.CLASS,
                         filePath = file.path,
                         packageName = packageName,
-                        lineNumber = classNode.getStartPoint().getRow() + 1
+                        lineNumber = classInfo.startRow + 1
                     )
                 )
                 edges.add(Edge(file.path, fqn, RelationType.CONTAINS))
-                classLineRanges.add(ClassLineRange(fqn, classNode.getStartPoint().getRow() + 1, classNode.getEndPoint().getRow() + 1))
+                classLineRanges.add(ClassLineRange(fqn, classInfo.startRow + 1, classInfo.endRow + 1))
 
                 // C# class inheritance
-                val braceIdx = sourceCode.indexOf('{', classNode.getStartByte())
-                val headerText = if (braceIdx != -1 && braceIdx > classNode.getStartByte()) {
-                    sourceCode.substring(classNode.getStartByte(), braceIdx)
+                val braceIdx = sourceCode.indexOf('{', classInfo.startByte)
+                val headerText = if (braceIdx != -1 && braceIdx > classInfo.startByte) {
+                    sourceCode.substring(classInfo.startByte, braceIdx)
                 } else {
-                    sourceCode.substring(classNode.getStartByte(), classNode.getEndByte())
+                    sourceCode.substring(classInfo.startByte, classInfo.endByte)
                 }
                 if (headerText.contains(":")) {
                     val inheritedList = headerText.substringAfter(":").trim().substringBefore("{").split(",").map { it.trim() }
@@ -74,7 +74,7 @@ class CSharpExtractor : BaseExtractor("C#", listOf("cs")) {
                 }
             }
 
-            if (interfaceName != null && interfaceNode != null) {
+            if (interfaceName != null && interfaceInfo != null) {
                 val fqn = "$packageName.$interfaceName"
                 symbols.add(
                     Symbol(
@@ -83,18 +83,18 @@ class CSharpExtractor : BaseExtractor("C#", listOf("cs")) {
                         type = SymbolType.INTERFACE,
                         filePath = file.path,
                         packageName = packageName,
-                        lineNumber = interfaceNode.getStartPoint().getRow() + 1
+                        lineNumber = interfaceInfo.startRow + 1
                     )
                 )
                 edges.add(Edge(file.path, fqn, RelationType.CONTAINS))
-                classLineRanges.add(ClassLineRange(fqn, interfaceNode.getStartPoint().getRow() + 1, interfaceNode.getEndPoint().getRow() + 1))
+                classLineRanges.add(ClassLineRange(fqn, interfaceInfo.startRow + 1, interfaceInfo.endRow + 1))
 
                 // C# interface inheritance
-                val braceIdx = sourceCode.indexOf('{', interfaceNode.getStartByte())
-                val headerText = if (braceIdx != -1 && braceIdx > interfaceNode.getStartByte()) {
-                    sourceCode.substring(interfaceNode.getStartByte(), braceIdx)
+                val braceIdx = sourceCode.indexOf('{', interfaceInfo.startByte)
+                val headerText = if (braceIdx != -1 && braceIdx > interfaceInfo.startByte) {
+                    sourceCode.substring(interfaceInfo.startByte, braceIdx)
                 } else {
-                    sourceCode.substring(interfaceNode.getStartByte(), interfaceNode.getEndByte())
+                    sourceCode.substring(interfaceInfo.startByte, interfaceInfo.endByte)
                 }
                 if (headerText.contains(":")) {
                     val inheritedList = headerText.substringAfter(":").trim().substringBefore("{").split(",").map { it.trim() }
@@ -106,7 +106,7 @@ class CSharpExtractor : BaseExtractor("C#", listOf("cs")) {
                 }
             }
 
-            if (functionName != null && functionNode != null) {
+            if (functionName != null && functionInfo != null) {
                 val fqn = "$packageName#$functionName"
                 symbols.add(
                     Symbol(
@@ -115,7 +115,7 @@ class CSharpExtractor : BaseExtractor("C#", listOf("cs")) {
                         type = SymbolType.FUNCTION,
                         filePath = file.path,
                         packageName = packageName,
-                        lineNumber = functionNode.getStartPoint().getRow() + 1
+                        lineNumber = functionInfo.startRow + 1
                     )
                 )
                 edges.add(Edge(file.path, fqn, RelationType.CONTAINS))
