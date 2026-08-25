@@ -8,6 +8,7 @@ import okio.FileSystem
 import okio.Path.Companion.toPath
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class ExtractorGoldenTest {
@@ -79,6 +80,25 @@ class ExtractorGoldenTest {
         )
 
         assertEquals(4, rel(r, RelationType.CONTAINS).size)
+    }
+
+    @Test
+    fun kotlinPrimaryConstructorDoesNotProduceFalseExtends() {
+        val code = """
+            package com.sample
+
+            class Repo(val name: String, val count: Int) : Base(), AutoCloseable {
+                override fun close() {}
+            }
+        """.trimIndent()
+
+        val r = KotlinJavaExtractor().extract(snippet("Repo.kt", code))
+
+        assertEquals(listOf("Repo"), names(r, SymbolType.CLASS))
+        val extends = rel(r, RelationType.EXTENDS).map { it.targetId }
+        assertEquals(setOf("Base", "AutoCloseable"), extends.toSet())
+        assertFalse(extends.any { it.endsWith(")") }, "constructor param types must not leak into EXTENDS: $extends")
+        assertFalse(extends.contains("String"), "constructor param types must not leak into EXTENDS: $extends")
     }
 
     @Test
