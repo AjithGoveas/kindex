@@ -36,6 +36,9 @@ class IndexStorage(dbPath: MPFile) {
     private val database = KIndexDatabase(driver)
     private val queries = database.kIndexDatabaseQueries
 
+    var ftsSearchAvailable: Boolean = false
+        private set
+
     init {
         // Run SQLite performance pragmas
         try {
@@ -62,6 +65,7 @@ class IndexStorage(dbPath: MPFile) {
                 """.trimIndent(),
                 0
             )
+            ftsSearchAvailable = true
         } catch (e: Exception) {
             // Ignore if FTS5 is unsupported on a specific platform
         }
