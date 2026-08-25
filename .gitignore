@@ -44,6 +44,8 @@ kotlin-daemon.log*
 *.so
 *.dylib
 *.dll
+*.a
+third_party/dist/
 
 # ==========================================
 # Other IDEs & Editors
