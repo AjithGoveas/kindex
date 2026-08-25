@@ -66,6 +66,9 @@ kotlin {
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.okio)
         }
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+        }
         jvmMain.dependencies {
             implementation(libs.jline)
             implementation(libs.jansi)

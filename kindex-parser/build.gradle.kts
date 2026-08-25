@@ -38,6 +38,10 @@ kotlin {
         commonMain.dependencies {
             implementation(project(":kindex-core"))
         }
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+            implementation(libs.okio)
+        }
         jvmMain.dependencies {
             implementation(libs.tree.sitter)
             implementation(libs.tree.sitter.java)

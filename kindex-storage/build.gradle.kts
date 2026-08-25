@@ -29,6 +29,9 @@ kotlin {
             implementation(project(":kindex-core"))
             implementation(libs.sqldelight.runtime)
         }
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+        }
         jvmMain.dependencies {
             implementation(libs.sqldelight.driver.sqlite)
         }
