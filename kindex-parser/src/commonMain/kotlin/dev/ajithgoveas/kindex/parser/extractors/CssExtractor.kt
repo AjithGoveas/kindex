@@ -23,9 +23,9 @@ class CssExtractor : BaseExtractor("CSS", listOf("css")) {
 
         for (group in groups) {
             val className = group.text["class_name"]
-            val classNode = group.captures["class_node"]
+            val classInfo = group.nodes["class_node"]
 
-            if (className != null && classNode != null) {
+            if (className != null && classInfo != null) {
                 val cleanName = className.removePrefix(".").removePrefix("#")
                 symbols.add(
                     Symbol(
@@ -34,7 +34,7 @@ class CssExtractor : BaseExtractor("CSS", listOf("css")) {
                         type = SymbolType.CLASS,
                         filePath = file.path,
                         packageName = "css",
-                        lineNumber = classNode.getStartPoint().getRow() + 1
+                        lineNumber = classInfo.startRow + 1
                     )
                 )
                 edges.add(Edge(file.path, cleanName, RelationType.CONTAINS))

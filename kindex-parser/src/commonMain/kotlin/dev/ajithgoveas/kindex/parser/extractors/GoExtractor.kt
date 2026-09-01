@@ -43,23 +43,16 @@ class GoExtractor : BaseExtractor("Go", listOf("go")) {
         for (group in groups) {
             val matchedPackage = group.text["package"]
             val className = group.text["class_name"]
-            val classNode = group.captures["class_node"]
+            val classInfo = group.nodes["class_node"]
             val functionName = group.text["function_name"]
-            val functionNode = group.captures["function_node"]
+            val functionInfo = group.nodes["function_node"]
 
             if (matchedPackage != null) {
                 packageName = matchedPackage
             }
 
-            if (className != null && classNode != null) {
-                var isInterface = false
-                for (i in 0 until classNode.getChildCount()) {
-                    val child = classNode.getChild(i) ?: continue
-                    if (child.getType() == "interface_type") {
-                        isInterface = true
-                        break
-                    }
-                }
+            if (className != null && classInfo != null) {
+                val isInterface = "interface_type" in classInfo.childTypes
 
                 val symbolType = if (isInterface) SymbolType.INTERFACE else SymbolType.CLASS
                 val fqn = "$packageName.$className"
@@ -71,14 +64,14 @@ class GoExtractor : BaseExtractor("Go", listOf("go")) {
                         type = symbolType,
                         filePath = file.path,
                         packageName = packageName,
-                        lineNumber = classNode.getStartPoint().getRow() + 1
+                        lineNumber = classInfo.startRow + 1
                     )
                 )
                 edges.add(Edge(file.path, fqn, RelationType.CONTAINS))
-                classLineRanges.add(ClassLineRange(fqn, classNode.getStartPoint().getRow() + 1, classNode.getEndPoint().getRow() + 1))
+                classLineRanges.add(ClassLineRange(fqn, classInfo.startRow + 1, classInfo.endRow + 1))
             }
 
-            if (functionName != null && functionNode != null) {
+            if (functionName != null && functionInfo != null) {
                 val fqn = "$packageName.$functionName"
                 symbols.add(
                     Symbol(
@@ -87,7 +80,7 @@ class GoExtractor : BaseExtractor("Go", listOf("go")) {
                         type = SymbolType.FUNCTION,
                         filePath = file.path,
                         packageName = packageName,
-                        lineNumber = functionNode.getStartPoint().getRow() + 1
+                        lineNumber = functionInfo.startRow + 1
                     )
                 )
                 edges.add(Edge(file.path, fqn, RelationType.CONTAINS))

@@ -30,11 +30,11 @@ expect fun getInteractiveCommand(): CliktCommand?
 
 class KIndex : CliktCommand(
     name = "kindex",
-    help = "Code Knowledge Indexer v1.0.0",
+    help = "Code Knowledge Indexer v${dev.ajithgoveas.kindex.core.BuildConst.VERSION}",
     invokeWithoutSubcommand = true
 ) {
     init {
-        versionOption("1.0.0", names = setOf("-v", "--version"))
+        versionOption(dev.ajithgoveas.kindex.core.BuildConst.VERSION, names = setOf("-v", "--version"))
     }
     override fun run() {
         if (currentContext.invokedSubcommand == null) {
@@ -44,11 +44,18 @@ class KIndex : CliktCommand(
 }
 
 fun walkFiles(dir: MPFile): List<MPFile> {
+    val defaultIgnoredDirs = setOf(
+        ".git", "build", ".gradle", ".kindex", "dist", "third_party", "tsbuild", "node_modules", ".idea", ".vscode", "target", "bin", "obj"
+    )
     val results = mutableListOf<MPFile>()
     val files = dir.listFiles() ?: return emptyList()
     for (file in files) {
+        val name = file.name
+        if (file.isDirectory && name in defaultIgnoredDirs) {
+            continue
+        }
         val path = file.path.replace('\\', '/')
-        if (path.contains("/build/") || path.contains("/.gradle/") || path.contains("/.kindex/") || path.contains("/nativeInterop/") || path.contains("/cinterop/") || path.contains("/dist/") || path.contains("/tsbuild/")) {
+        if (path.contains("/build/") || path.contains("/.gradle/") || path.contains("/.kindex/") || path.contains("/dist/")) {
             continue
         }
         if (file.isDirectory) {
@@ -81,7 +88,6 @@ class ScanCommand : CliktCommand(name = "scan", help = "Scan a repository direct
         }
         val dbFile = MPFile("${rootDir.path}/.kindex/index.db")
         if (!quiet) t.println(cyan("Scanning repository at: ") + bold(dirFile.absolutePath))
-
         val extractors = listOf(
             KotlinJavaExtractor(),
             RustExtractor(),
@@ -99,6 +105,9 @@ class ScanCommand : CliktCommand(name = "scan", help = "Scan a repository direct
         if (!quiet) t.println("Found ${walkedFiles.size} candidate source files. Checking for modifications...")
 
         val storage = IndexStorage(dbFile)
+        if (!storage.ftsSearchAvailable && !quiet) {
+            t.println(yellow("⚠ FTS5 unavailable on this platform - search falls back to slower LIKE queries"))
+        }
 
         // Load existing index file metadata
         val existingFiles = storage.getFilesMetadata()
@@ -132,6 +141,7 @@ class ScanCommand : CliktCommand(name = "scan", help = "Scan a repository direct
 
         // Progress indicators while processing files
         val parseResults = mutableListOf<ParseResult>()
+        val parseFailures = mutableListOf<Pair<String, String>>()
         if (filesToScan.isNotEmpty()) {
             if (!quiet) t.println("Parsing ASTs and extracting symbols...")
             filesToScan.forEachIndexed { index, file ->
@@ -141,10 +151,20 @@ class ScanCommand : CliktCommand(name = "scan", help = "Scan a repository direct
                     val ext = extractors.first { it.supports(file) }
                     parseResults.add(ext.extract(file))
                 } catch (e: Throwable) {
-                    // Continue scanning remaining files
+                    parseFailures.add(file.path to "${e::class.simpleName}: ${e.message ?: "unknown error"}")
                 }
             }
             if (!quiet) t.print("\r✓ AST parsing complete.                                                        \n")
+            if (parseFailures.isNotEmpty()) {
+                try {
+                    val logPath = MPFile("${rootDir.path}/.kindex/scan-errors.log")
+                    logPath.writeText(
+                        parseFailures.joinToString("\n") { (path, err) -> "$path -> $err" } + "\n"
+                    )
+                } catch (_: Throwable) {
+                }
+                if (!quiet) t.println(yellow("⚠ ${parseFailures.size} file(s) failed to parse - details in .kindex/scan-errors.log"))
+            }
         }
 
         // Load all symbols to resolve imports across unchanged + modified files

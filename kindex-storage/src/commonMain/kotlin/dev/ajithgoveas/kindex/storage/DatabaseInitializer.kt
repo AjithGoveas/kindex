@@ -36,6 +36,9 @@ class IndexStorage(dbPath: MPFile) {
     private val database = KIndexDatabase(driver)
     private val queries = database.kIndexDatabaseQueries
 
+    var ftsSearchAvailable: Boolean = false
+        private set
+
     init {
         // Run SQLite performance pragmas
         try {
@@ -62,6 +65,7 @@ class IndexStorage(dbPath: MPFile) {
                 """.trimIndent(),
                 0
             )
+            ftsSearchAvailable = true
         } catch (e: Exception) {
             // Ignore if FTS5 is unsupported on a specific platform
         }
@@ -78,8 +82,9 @@ class IndexStorage(dbPath: MPFile) {
                 queries.clearFileData(path)
                 queries.clearFileRelations(path)
                 try {
-                    val sanitizedPath = path.replace("'", "''")
-                    driver.execute(null, "DELETE FROM symbols_fts WHERE filePath = '$sanitizedPath';", 0)
+                    driver.execute(null, "DELETE FROM symbols_fts WHERE filePath = ?;", 1) {
+                        bindString(0, path)
+                    }
                 } catch (e: Exception) {
                     // Ignore FTS errors
                 }
@@ -90,8 +95,9 @@ class IndexStorage(dbPath: MPFile) {
                 queries.clearFileData(result.sourceFile.path)
                 queries.clearFileRelations(result.sourceFile.path)
                 try {
-                    val sanitizedPath = result.sourceFile.path.replace("'", "''")
-                    driver.execute(null, "DELETE FROM symbols_fts WHERE filePath = '$sanitizedPath';", 0)
+                    driver.execute(null, "DELETE FROM symbols_fts WHERE filePath = ?;", 1) {
+                        bindString(0, result.sourceFile.path)
+                    }
                 } catch (e: Exception) {
                     // Ignore FTS errors
                 }
@@ -156,7 +162,24 @@ class IndexStorage(dbPath: MPFile) {
         val trimmed = term.trim()
         if (trimmed.isNotEmpty()) {
             try {
-                val formattedQuery = trimmed.split(Regex("\\s+")).joinToString(" ") { "$it*" }
+                val cleanTerm = trimmed.replace(Regex("[^a-zA-Z0-9_]"), " ")
+                val formattedQuery = cleanTerm.split(Regex("\\s+"))
+                    .filter { it.isNotEmpty() }
+                    .joinToString(" ") { "$it*" }
+
+                if (formattedQuery.isBlank()) {
+                    return queries.getAllSymbols().executeAsList().map {
+                        Symbol(
+                            id = it.id,
+                            name = it.name,
+                            type = SymbolType.valueOf(it.type),
+                            filePath = it.filePath,
+                            packageName = it.packageName,
+                            lineNumber = it.lineNumber.toInt()
+                        )
+                    }
+                }
+
                 val ftsQuerySql = """
                     SELECT symbolId, name, type, filePath, packageName, lineNumber 
                     FROM symbols_fts 

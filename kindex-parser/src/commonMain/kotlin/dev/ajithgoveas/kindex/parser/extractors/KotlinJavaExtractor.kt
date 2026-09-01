@@ -21,10 +21,29 @@ class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
             """
             (package_header) @package
             (import_header) @import
+            (import) @import
+            (class_declaration (identifier) @class_name) @class_node
             (class_declaration (type_identifier) @class_name) @class_node
+            (class_declaration (simple_identifier) @class_name) @class_node
+            (object_declaration (identifier) @class_name) @class_node
             (object_declaration (type_identifier) @class_name) @class_node
+            (object_declaration (simple_identifier) @class_name) @class_node
+            (function_declaration (identifier) @function_name) @function_node
             (function_declaration (simple_identifier) @function_name) @function_node
+            (call_expression (identifier) @call_name) @call_node
             (call_expression (simple_identifier) @call_name) @call_node
+            (class_declaration (delegation_specifier (user_type (identifier) @super_name)))
+            (class_declaration (delegation_specifier (user_type (type_identifier) @super_name)))
+            (class_declaration (delegation_specifier (user_type (simple_identifier) @super_name)))
+            (class_declaration (delegation_specifier (constructor_invocation (user_type (identifier) @super_name))))
+            (class_declaration (delegation_specifier (constructor_invocation (user_type (type_identifier) @super_name))))
+            (class_declaration (delegation_specifier (constructor_invocation (user_type (simple_identifier) @super_name))))
+            (object_declaration (delegation_specifier (user_type (identifier) @super_name)))
+            (object_declaration (delegation_specifier (user_type (type_identifier) @super_name)))
+            (object_declaration (delegation_specifier (user_type (simple_identifier) @super_name)))
+            (object_declaration (delegation_specifier (constructor_invocation (user_type (identifier) @super_name))))
+            (object_declaration (delegation_specifier (constructor_invocation (user_type (type_identifier) @super_name))))
+            (object_declaration (delegation_specifier (constructor_invocation (user_type (simple_identifier) @super_name))))
             """.trimIndent()
         } else {
             """
@@ -35,6 +54,9 @@ class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
             (method_declaration name: (identifier) @function_name) @function_node
             (method_invocation name: (identifier) @call_name) @call_node
             (object_creation_expression type: (type_identifier) @class_instantiation) @call_node
+            (class_declaration (superclass (type_identifier) @super_name))
+            (class_declaration (super_interfaces (type_list (type_identifier) @super_name)))
+            (interface_declaration (extends_interfaces (type_list (type_identifier) @super_name)))
             """.trimIndent()
         }
 
@@ -44,7 +66,9 @@ class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
         val classLineRanges = mutableListOf<ClassLineRange>()
         val functionLineRanges = mutableListOf<MemberLineRange>()
 
-        // Temporary holders for unresolved call references
+        data class SuperTypeRef(val target: String, val line: Int)
+        val superTypeRefs = mutableListOf<SuperTypeRef>()
+
         data class UnresolvedCall(val targetRef: String, val line: Int)
         val unresolvedCalls = mutableListOf<UnresolvedCall>()
 
@@ -56,23 +80,24 @@ class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
             val matchedPackage = group.text["package"]
             val matchedImport = group.text["import"]
             val className = group.text["class_name"]
-            val classNode = group.captures["class_node"]
+            val classInfo = group.nodes["class_node"]
             val interfaceName = group.text["interface_name"]
-            val interfaceNode = group.captures["interface_node"]
+            val interfaceInfo = group.nodes["interface_node"]
             val functionName = group.text["function_name"]
-            val functionNode = group.captures["function_node"]
+            val functionInfo = group.nodes["function_node"]
 
-            // Reference / Call extraction
-            val callNode = group.captures["call_node"]
-            val callRecv = group.text["call_recv"]
+            val callInfo = group.nodes["call_node"]
             val callName = group.text["call_name"]
             val classInstantiation = group.text["class_instantiation"]
+            val superName = group.text["super_name"]
+            val superInfo = group.nodes["super_name"]
 
             if (matchedPackage != null) {
                 packageName = matchedPackage.trim()
                     .removePrefix("package")
                     .trim()
                     .substringBefore('\n')
+                    .removeSuffix(";")
                     .trim()
                     .ifEmpty { null }
             }
@@ -85,6 +110,7 @@ class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
                             .removePrefix("import")
                             .trim()
                             .substringBefore('\n')
+                            .removeSuffix(";")
                             .trim()
                             .substringBefore(" as ")
                             .trim(),
@@ -93,7 +119,7 @@ class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
                 )
             }
 
-            if (className != null && classNode != null) {
+            if (className != null && classInfo != null) {
                 val fqn = if (packageName != null) "$packageName.$className" else className
                 symbols.add(
                     Symbol(
@@ -102,47 +128,14 @@ class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
                         type = SymbolType.CLASS,
                         filePath = file.path,
                         packageName = packageName,
-                        lineNumber = classNode.getStartPoint().getRow() + 1
+                        lineNumber = classInfo.startRow + 1
                     )
                 )
                 edges.add(Edge(file.path, fqn, RelationType.CONTAINS))
-                classLineRanges.add(ClassLineRange(fqn, classNode.getStartPoint().getRow() + 1, classNode.getEndPoint().getRow() + 1))
-
-                // Class inheritance extraction from header
-                val braceIdx = sourceCode.indexOf('{', classNode.getStartByte())
-                val headerText = if (braceIdx != -1 && braceIdx > classNode.getStartByte()) {
-                    sourceCode.substring(classNode.getStartByte(), braceIdx)
-                } else {
-                    sourceCode.substring(classNode.getStartByte(), classNode.getEndByte())
-                }
-
-                if (headerText.contains("extends")) {
-                    val extended = headerText.substringAfter("extends").trim().substringBefore("implements").substringBefore("{").trim().split(",").map { it.trim() }
-                    for (ext in extended) {
-                        if (ext.isNotEmpty()) {
-                            edges.add(Edge(fqn, ext, RelationType.EXTENDS))
-                        }
-                    }
-                }
-                if (headerText.contains("implements")) {
-                    val implemented = headerText.substringAfter("implements").trim().substringBefore("{").trim().split(",").map { it.trim() }
-                    for (impl in implemented) {
-                        if (impl.isNotEmpty()) {
-                            edges.add(Edge(fqn, impl, RelationType.EXTENDS))
-                        }
-                    }
-                }
-                if (isKotlin && headerText.contains(":")) {
-                    val supertypes = headerText.substringAfter(":").trim().substringBefore("{").trim().split(",").map { it.trim().substringBefore("(").substringBefore("<").trim() }
-                    for (supertype in supertypes) {
-                        if (supertype.isNotEmpty()) {
-                            edges.add(Edge(fqn, supertype, RelationType.EXTENDS))
-                        }
-                    }
-                }
+                classLineRanges.add(ClassLineRange(fqn, classInfo.startRow + 1, classInfo.endRow + 1))
             }
 
-            if (interfaceName != null && interfaceNode != null) {
+            if (interfaceName != null && interfaceInfo != null) {
                 val fqn = if (packageName != null) "$packageName.$interfaceName" else interfaceName
                 symbols.add(
                     Symbol(
@@ -151,38 +144,14 @@ class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
                         type = SymbolType.INTERFACE,
                         filePath = file.path,
                         packageName = packageName,
-                        lineNumber = interfaceNode.getStartPoint().getRow() + 1
+                        lineNumber = interfaceInfo.startRow + 1
                     )
                 )
                 edges.add(Edge(file.path, fqn, RelationType.CONTAINS))
-                classLineRanges.add(ClassLineRange(fqn, interfaceNode.getStartPoint().getRow() + 1, interfaceNode.getEndPoint().getRow() + 1))
-
-                // Interface inheritance from header
-                val braceIdx = sourceCode.indexOf('{', interfaceNode.getStartByte())
-                val headerText = if (braceIdx != -1 && braceIdx > interfaceNode.getStartByte()) {
-                    sourceCode.substring(interfaceNode.getStartByte(), braceIdx)
-                } else {
-                    sourceCode.substring(interfaceNode.getStartByte(), interfaceNode.getEndByte())
-                }
-                if (headerText.contains("extends")) {
-                    val extended = headerText.substringAfter("extends").trim().substringBefore("{").trim().split(",").map { it.trim() }
-                    for (ext in extended) {
-                        if (ext.isNotEmpty()) {
-                            edges.add(Edge(fqn, ext, RelationType.EXTENDS))
-                        }
-                    }
-                }
-                if (isKotlin && headerText.contains(":")) {
-                    val supertypes = headerText.substringAfter(":").trim().substringBefore("{").trim().split(",").map { it.trim().substringBefore("(").substringBefore("<").trim() }
-                    for (supertype in supertypes) {
-                        if (supertype.isNotEmpty()) {
-                            edges.add(Edge(fqn, supertype, RelationType.EXTENDS))
-                        }
-                    }
-                }
+                classLineRanges.add(ClassLineRange(fqn, interfaceInfo.startRow + 1, interfaceInfo.endRow + 1))
             }
 
-            if (functionName != null && functionNode != null) {
+            if (functionName != null && functionInfo != null) {
                 val fqn = if (packageName != null) "$packageName#$functionName" else functionName
                 symbols.add(
                     Symbol(
@@ -191,31 +160,39 @@ class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
                         type = SymbolType.FUNCTION,
                         filePath = file.path,
                         packageName = packageName,
-                        lineNumber = functionNode.getStartPoint().getRow() + 1
+                        lineNumber = functionInfo.startRow + 1
                     )
                 )
                 edges.add(Edge(file.path, fqn, RelationType.CONTAINS))
-                functionLineRanges.add(MemberLineRange(fqn, functionNode.getStartPoint().getRow() + 1, functionNode.getEndPoint().getRow() + 1))
+                functionLineRanges.add(MemberLineRange(fqn, functionInfo.startRow + 1, functionInfo.endRow + 1))
             }
 
-            // Capture calls / instantiations
-            if (callNode != null) {
-                val line = callNode.getStartPoint().getRow() + 1
+            if (superName != null && superInfo != null) {
+                superTypeRefs.add(SuperTypeRef(superName, superInfo.startRow + 1))
+            }
+
+            if (callInfo != null) {
+                val line = callInfo.startRow + 1
                 if (classInstantiation != null) {
                     unresolvedCalls.add(UnresolvedCall("REF:$classInstantiation", line))
                 } else if (callName != null) {
-                    val refName = if (callRecv != null) "$callRecv.$callName" else callName
-                    unresolvedCalls.add(UnresolvedCall("REF:$refName", line))
+                    unresolvedCalls.add(UnresolvedCall("REF:$callName", line))
                 }
             }
         }
 
-        // 1. Resolve containment edges of functions to classes based on line ranges
+        for (ref in superTypeRefs) {
+            val owner = classLineRanges
+                .filter { it.startLine <= ref.line && it.endLine >= ref.line }
+                .minByOrNull { it.endLine - it.startLine }
+            if (owner != null) {
+                edges.add(Edge(owner.symbolId, ref.target, RelationType.EXTENDS))
+            }
+        }
+
         val resolvedContainmentEdges = resolveNesting(symbols, edges, classLineRanges).toMutableList()
 
-        // 2. Link unresolved call sites to their containing function, containing class, or the file
         for (call in unresolvedCalls) {
-            // Find containing function first
             val containingFunc = functionLineRanges
                 .filter { it.startLine <= call.line && it.endLine >= call.line }
                 .minByOrNull { it.endLine - it.startLine }
@@ -225,7 +202,6 @@ class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
                 continue
             }
 
-            // Fallback to containing class
             val containingClass = classLineRanges
                 .filter { it.startLine <= call.line && it.endLine >= call.line }
                 .minByOrNull { it.endLine - it.startLine }
@@ -235,7 +211,6 @@ class KotlinJavaExtractor : BaseExtractor("Kotlin/Java", listOf("kt", "java")) {
                 continue
             }
 
-            // Fallback to the file itself
             resolvedContainmentEdges.add(Edge(file.path, call.targetRef, RelationType.CALLS))
         }
 

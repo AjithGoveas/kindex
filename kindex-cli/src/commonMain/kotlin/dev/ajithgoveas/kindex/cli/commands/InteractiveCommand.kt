@@ -699,9 +699,7 @@ class InteractiveCommand : CliktCommand(
     private fun runExport(gran: Int, fmt: Int): String {
         return try {
             val symbols = storage.getAllSymbols()
-            val edges = storage.getAllEdges().filter {
-                !it.targetId.contains(" = \"") && !it.targetId.contains("help =") && !it.sourceId.contains(" = \"")
-            }
+            val edges = storage.getAllEdges()
             val g = GRANS[gran]
             val f = FMTS[fmt]
             val content = when (g) {

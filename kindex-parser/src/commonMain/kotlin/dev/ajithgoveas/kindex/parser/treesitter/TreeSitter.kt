@@ -13,16 +13,18 @@ expect class TreeSitterJava() : TSLanguage
 expect class TreeSitterRust() : TSLanguage
 expect class TreeSitterTypescript() : TSLanguage
 
-expect class TSParser() {
+expect class TSParser() : AutoCloseable {
     fun setLanguage(language: TSLanguage): Boolean
     fun parseString(oldTree: TSTree?, sourceCode: String): TSTree
+    override fun close()
 }
 
-expect class TSTree {
+expect class TSTree : AutoCloseable {
     fun getRootNode(): TSNode
+    override fun close()
 }
 
-expect class TSNode {
+expect class TSNode : AutoCloseable {
     fun isNull(): Boolean
     fun getParent(): TSNode?
     fun getChildCount(): Int
@@ -32,24 +34,28 @@ expect class TSNode {
     fun getEndByte(): Int
     fun getStartPoint(): TSPoint
     fun getEndPoint(): TSPoint
+    override fun close()
 }
 
 expect class TSPoint {
     fun getRow(): Int
 }
 
-expect class TSQuery(language: TSLanguage, queryStr: String) {
+expect class TSQuery(language: TSLanguage, queryStr: String) : AutoCloseable {
     fun isValid(): Boolean
     fun getCaptureNameForId(id: Int): String
+    override fun close()
 }
 
-expect class TSQueryCursor() {
+expect class TSQueryCursor() : AutoCloseable {
     fun exec(query: TSQuery, node: TSNode)
     fun getMatches(): Iterator<TSQueryMatch>
+    override fun close()
 }
 
-expect class TSQueryMatch {
+expect class TSQueryMatch : AutoCloseable {
     fun getCaptures(): Array<TSQueryCapture>
+    override fun close()
 }
 
 expect class TSQueryCapture {

@@ -27,16 +27,16 @@ class CExtractor : BaseExtractor("C", listOf("c", "h")) {
         for (group in groups) {
             val matchedImport = group.text["import"]
             val className = group.text["class_name"]
-            val classNode = group.captures["class_node"]
+            val classInfo = group.nodes["class_node"]
             val functionName = group.text["function_name"]
-            val functionNode = group.captures["function_node"]
+            val functionInfo = group.nodes["function_node"]
 
             if (matchedImport != null) {
                 val imported = matchedImport.trim(' ', '"', '<', '>')
                 edges.add(Edge(file.path, imported, RelationType.IMPORTS))
             }
 
-            if (className != null && classNode != null) {
+            if (className != null && classInfo != null) {
                 symbols.add(
                     Symbol(
                         id = className,
@@ -44,14 +44,14 @@ class CExtractor : BaseExtractor("C", listOf("c", "h")) {
                         type = SymbolType.CLASS,
                         filePath = file.path,
                         packageName = "c",
-                        lineNumber = classNode.getStartPoint().getRow() + 1
+                        lineNumber = classInfo.startRow + 1
                     )
                 )
                 edges.add(Edge(file.path, className, RelationType.CONTAINS))
-                classLineRanges.add(ClassLineRange(className, classNode.getStartPoint().getRow() + 1, classNode.getEndPoint().getRow() + 1))
+                classLineRanges.add(ClassLineRange(className, classInfo.startRow + 1, classInfo.endRow + 1))
             }
 
-            if (functionName != null && functionNode != null) {
+            if (functionName != null && functionInfo != null) {
                 symbols.add(
                     Symbol(
                         id = functionName,
@@ -59,7 +59,7 @@ class CExtractor : BaseExtractor("C", listOf("c", "h")) {
                         type = SymbolType.FUNCTION,
                         filePath = file.path,
                         packageName = "c",
-                        lineNumber = functionNode.getStartPoint().getRow() + 1
+                        lineNumber = functionInfo.startRow + 1
                     )
                 )
                 edges.add(Edge(file.path, functionName, RelationType.CONTAINS))
