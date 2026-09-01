@@ -97,7 +97,6 @@ Desktop.ini
 .env
 *.mmd
 *.dot
-*.json
 # ==========================================
 # Scratch / toolchain builds (not part of VCS)
 # ==========================================

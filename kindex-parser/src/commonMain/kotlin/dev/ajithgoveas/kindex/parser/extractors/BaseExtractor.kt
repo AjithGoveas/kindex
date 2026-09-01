@@ -88,7 +88,6 @@ abstract class BaseExtractor(
                     }
 
                     if (queriesToRun.isEmpty()) {
-                        println("kindex: WARNING tree-sitter query rejected for $languageName")
                         return emptyList()
                     }
 
